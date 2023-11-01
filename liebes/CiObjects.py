@@ -75,11 +75,13 @@ class TestCase:
             pass
         if self.test_path.startswith("lc-compliance"):
             self.type = "lc-compliance"
-            self.file_path = Path("test_cases/kernelci-core/config/rootfs/debos/overlays/libcamera/usr/bin/lc-compliance-parser.sh").absolute()
+            self.file_path = Path(
+                "test_cases/kernelci-core/config/rootfs/debos/overlays/libcamera/usr/bin/lc-compliance-parser.sh").absolute()
             return True
         if self.test_path.startswith("v4l2-compliance"):
             self.type = "v4l2-compliance"
-            self.file_path = Path("test_cases/kernelci-core/config/rootfs/debos/overlays/v4l2/usr/bin/v4l2-parser.sh").absolute()
+            self.file_path = Path(
+                "test_cases/kernelci-core/config/rootfs/debos/overlays/v4l2/usr/bin/v4l2-parser.sh").absolute()
             return True
         if self.test_path.startswith("igt"):
             temp = self.test_path.split(".")
@@ -268,6 +270,22 @@ class CIAnalysis:
                     test_plan.test_cases = temp
         print(f"filter {before - after} no file test cases, reduce test_cases from {before} to {after}")
 
+    def filter_c_test_cases(self):
+        before = 0
+        after = 0
+        for ci_obj in self.ci_objs:
+            for build in ci_obj.builds:
+                for test_plan in build.tests:
+                    temp = []
+                    for test_case in test_plan.test_cases:
+                        if test_case.file_path.suffix == ".c":
+                            temp.append(test_case)
+                            after += 1
+                        before += 1
+                    test_plan.test_cases = temp
+        print(f"filter {before - after} not c test cases, reduce test_cases from {before} to {after}")
+
+
     def assert_all_test_file_exists(self):
         flag = True
         for t in self.get_all_testcases():
@@ -280,4 +298,3 @@ class CIAnalysis:
 
 def load_cia(file_path) -> 'CIAnalysis':
     return pickle.load(Path(file_path).open("rb"))
-    

@@ -1,10 +1,24 @@
 from git import Repo
 import difflib
 
+from pathlib import Path
+
 
 class GitHelper:
     def __init__(self, repo_path):
         self.repo = Repo(repo_path)
+
+    def get_diff_contents(self, commit, to_commit):
+        commit_obj_a = self.repo.commit(commit)
+        commit_obj_b = self.repo.commit(to_commit)
+        diff = commit_obj_a.diff(commit_obj_b)
+        # TODO not only consider modified type, but also ADD type, etc.
+        diff_content = []
+        for diff_obj in diff.iter_change_type('M'):
+            if Path(diff_obj.b_path).suffix == ".c":
+                diff_content.append(diff_obj.b_blob.data_stream.read().decode('utf-8'))
+        return diff_content
+
 
     def diff(self, commit, to_commit):
         commit_obj_a = self.repo.commit(commit)
