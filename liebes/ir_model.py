@@ -1,6 +1,8 @@
 from rank_bm25 import BM25Okapi
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+from gensim import corpora, models, similarities
+
 import numpy as np
 
 class BaseModel:
@@ -36,8 +38,8 @@ class TfIdfModel(BaseModel):
         return tfidf_matrix.toarray()
 
     def getSimilarity(corpus, queries):
-        corpus = np.concatenate((np.array(corpus), np.array(queries)))
-        tfidf_matrix = vectorization(corpus)
+        docs = np.concatenate((np.array(corpus), np.array(queries)))
+        tfidf_matrix = vectorization(docs)
 
         # 计算余弦相似度
         cosine_similarity_matrix = cosine_similarity(tfidf_matrix)
@@ -64,7 +66,29 @@ class LSIModel(BaseModel):
     def __init__(self):
         super().__init__()
 
+    def getSimilarity(corpus, queries):
+        tokenized_corpus = [doc.split(' ') for doc in np.concatenate((np.array(corpus), np.array(queries)))]
+        dictionary = corpora.Dictionary(tokenized_corpus)
+
+        doc_term_matrix = [dictionary.doc2bow(tokens) for tokens in tokenized_corpus]
+
+        lsi_model = models.LsiModel(doc_term_matrix, id2word=dictionary, num_topics=2)
+        similarity_matrix = np.array(similarities.MatrixSimilarity(lsi_model[doc_term_matrix]))
+
+        return np.transpose(similarity_matrix[0: len(corpus), len(corpus): ])
+
 
 class LDAModel(BaseModel):
     def __init__(self):
         super().__init__()
+
+    def getSimilarity(corpus, queries):
+        tokenized_corpus = [doc.split(' ') for doc in np.concatenate((np.array(corpus), np.array(queries)))]
+        dictionary = corpora.Dictionary(tokenized_corpus)
+
+        doc_term_matrix = [dictionary.doc2bow(tokens) for tokens in tokenized_corpus]
+
+        lsi_model = models.LdaModel(doc_term_matrix, id2word=dictionary, num_topics=2)
+        similarity_matrix = np.array(similarities.MatrixSimilarity(lsi_model[doc_term_matrix]))
+
+        return np.transpose(similarity_matrix[0: len(corpus), len(corpus): ])
