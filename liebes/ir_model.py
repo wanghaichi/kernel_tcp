@@ -57,7 +57,7 @@ class Bm25Model(BaseModel):
         bm25 = BM25Okapi(tokenized_corpus)
         tokenized_query = [doc.split(" ") for doc in queries]
         score_matrix = np.array([bm25.get_scores(query) for query in tokenized_query])
-        print(score_matrix)
+        return score_matrix
 
 
 class LSIModel(BaseModel):
