@@ -48,6 +48,12 @@ if __name__ == '__main__':
     cia.filter_unknown_test_cases()
     cia.filter_always_failed_test_cases()
     cia.filter_no_file_test_cases()
+    cia.assert_all_test_file_exists()
+
     cia.statistic_data()
+
+
+
+
 
     # print(f"{cnt} / {len(test_cases)}")
