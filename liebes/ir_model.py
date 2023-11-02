@@ -51,11 +51,11 @@ class Bm25Model(BaseModel):
     def __init__(self):
         super().__init__()
 
-    def getSimilarity(corpus, queries):
-        tokenized_corpus = [doc.split(" ") for doc in corpus]
+    def getSimilarity(self, corpus, queries):
+        tokenized_corpus = [doc.split(" ") for doc in np.concatenate((np.array(corpus), np.array(queries)))]
         bm25 = BM25Okapi(tokenized_corpus)
         tokenized_query = [doc.split(" ") for doc in queries]
-        score_matrix = np.array([bm25.get_scores(query) for query in tokenized_query])
+        score_matrix = np.array([bm25.get_scores(query) for query in tokenized_query])[ :, : len(corpus)]
         return score_matrix
 
 
@@ -63,7 +63,7 @@ class LSIModel(BaseModel):
     def __init__(self):
         super().__init__()
 
-    def getSimilarity(corpus, queries):
+    def getSimilarity(self, corpus, queries):
         tokenized_corpus = [doc.split(' ') for doc in np.concatenate((np.array(corpus), np.array(queries)))]
         dictionary = corpora.Dictionary(tokenized_corpus)
 
@@ -79,7 +79,7 @@ class LDAModel(BaseModel):
     def __init__(self):
         super().__init__()
 
-    def getSimilarity(corpus, queries):
+    def getSimilarity(self, corpus, queries):
         tokenized_corpus = [doc.split(' ') for doc in np.concatenate((np.array(corpus), np.array(queries)))]
         dictionary = corpora.Dictionary(tokenized_corpus)
 
