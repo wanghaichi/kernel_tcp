@@ -48,15 +48,61 @@ class TfIdfModel(BaseModel):
         return similarity_matrix
 
 class Bm25Model(BaseModel):
-    def __init__(self):
+    def __init__(self, k1=2, k2=2, b=0.75):
         super().__init__()
+        self.corpus = None
+        self.doc_num = 0
+        self.avg_doc_len = 0
+        self.tf = []
+        self.idf = {}
+        self.k1 = k1
+        self.k2 = k2
+        self.b = b
+    
+    def init(self, corpus):
+        corpus = [doc.split(' ') for doc in corpus]
+        self.corpus = corpus
+        self.doc_num = len(corpus)
+        self.avg_doc_len = sum([len(doc) for doc in corpus]) / self.doc_num
+        df = {}
+        for doc in self.corpus:
+            tmp = {}
+            for word in doc:
+                tmp[word] = tmp.get(word, 0) + 1
+            self.tf.append(tmp)
+            for key in tmp.keys():
+                df[key] = df.get(key, 0) + 1
+        
+        for key, value in df.items():
+            self.idf[key] = np.log((self.doc_num - value + 0.5) / (value + 0.5))
 
+    def get_score(self, index, query):
+        score = 0.0
+        doc_len = len(self.tf[index])
+        qf = Counter(query)
+        for q in qf:
+            if q not in self.tf[index]:
+                continue
+            score += self.idf[q] * (self.tf[index][q] * (self.k1 + 1) / (
+                self.tf[index][q] + self.k1 * (1 - self.b + self.b * doc_len / self.avg_doc_len))) * (qf[q] * (self.k2 + 1) / (qf[q] + self.k2))
+        
+        return score
+    
+    def get_doc_score(self, query):
+        score_list = []
+        for i in range(self.doc_num):
+            score_list.append(self.get_score(i, query))
+        
+        return score_list
+    
     def getSimilarity(self, corpus, queries):
-        tokenized_corpus = [doc.split(" ") for doc in np.concatenate((np.array(corpus), np.array(queries)))]
-        bm25 = BM25Okapi(tokenized_corpus)
-        tokenized_query = [doc.split(" ") for doc in queries]
-        score_matrix = np.array([bm25.get_scores(query) for query in tokenized_query])[ :, : len(corpus)]
-        return score_matrix
+        self.init(np.concatenate((np.array(corpus), np.array(queries))))
+        tokenized_query = [doc.split(' ') for doc in queries]
+        similarity_matrix = []
+        for q in tokenized_query:
+            similarity_matrix.append(self.get_doc_score(q))
+        
+        return np.array(similarity_matrix)[:, :len(corpus)]
 
 
 class LSIModel(BaseModel):
