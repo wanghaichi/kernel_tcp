@@ -285,6 +285,29 @@ class CIAnalysis:
                     test_plan.test_cases = temp
         print(f"filter {before - after} not c test cases, reduce test_cases from {before} to {after}")
 
+    def combine_same_test_file_case(self):
+        test_cases = self.get_all_testcases()
+        m = {}
+        for tc in test_cases:
+            if tc.file_path not in m.keys():
+                m[tc.file_path] = set()
+            m[tc.file_path].add(tc.test_path)
+        print(len(m.keys()))
+
+        in_one_m = {}
+        for k, v in m.items():
+            kk = v.pop()
+            in_one_m[kk] = kk
+            for temp in v:
+                in_one_m[temp] = kk
+        # print(in_one_m)
+        res = []
+        for tc in test_cases:
+            if in_one_m[tc.test_path] == tc.test_path:
+                res.append(tc)
+        print(len(test_cases))
+        print(len(res))
+
 
     def assert_all_test_file_exists(self):
         flag = True

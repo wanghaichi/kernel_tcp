@@ -3,9 +3,10 @@ import os
 import numpy as np
 
 from liebes.CiObjects import *
+from liebes.EHelper import EHelper
 from liebes.GitHelper import GitHelper
-from liebes.tokenizer import AstTokenizer
-from liebes.ir_model import TfIdfModel
+from liebes.tokenizer import *
+from liebes.ir_model import *
 
 
 class TestCaseInfo:
@@ -29,43 +30,13 @@ def update_token_mapping(m, mapping_path):
     json.dump(m, Path(mapping_path).open("w"))
 
 
-if __name__ == '__main__':
-    # data_path = Path("dataset/data0.json")
-    # ci_obj = CIObj.load_from_json("dataset/data0.json")
-    # ci_obj.print_with_intent()
-    # cia = CIAnalysis()
-    # for i in range(20):
-    #     ci_obj = CIObj.load_from_json(f"dataset/data{i}.json")
-    #     cia.ci_objs.append(ci_obj)
-    # pickle.dump(cia, Path("cia.pkl").open("wb"))
-
-    linux_path = '/home/wanghaichi/linux'
-    gitHelper = GitHelper(linux_path)
-
-    # cia = load_cia("cia.pkl")
-
-    # for i in range(len(cia.ci_objs) - 1):
-    #     gitHelper.diff(cia.ci_objs[i].commit_hash, cia.ci_objs[i+1].commit_hash)
-
-    # cia = cia.select("arm64/defconfig+arm64-chromebook")
-    # cia.filter_unknown_test_cases()
-    # cia.filter_always_failed_test_cases()
-    # cia.filter_no_file_test_cases()
-    # cia.filter_c_test_cases()
-
-    # pickle.dump(cia, Path("cia-filter.pkl").open("wb"))
-    cia = load_cia("cia-filter.pkl")
-    cia.assert_all_test_file_exists()
-    cia.statistic_data()
-
-    tokenizer = AstTokenizer()
-    ir_model = TfIdfModel()
-
-    mapping_path = "token-tfidf.json"
+def do_exp(cia: CIAnalysis, tokenizer: BaseTokenizer, ir_model: BaseModel):
+    mapping_path = f"token-{tokenizer.name}.json"
     if Path(mapping_path).exists():
         m = json.load(Path(mapping_path).open("r"))
     else:
         m = {}
+    apfd_res = []
     for ci_index in range(1, len(cia.ci_objs)):
         ci_obj = cia.ci_objs[ci_index]
         last_ci_obj = cia.ci_objs[ci_index - 1]
@@ -95,8 +66,74 @@ if __name__ == '__main__':
         for cc in code_changes:
             tokens = tokenizer.get_tokens(cc)
             queries.append(" ".join(tokens))
-        print(f"corpus: {len(token_arr)}, queries: {len(queries)}")
-        s = ir_model.getSimilarity(token_arr, queries)
-        print(s.shape)
-        # similarity_sum = np.sum(s.shape, )
-        # exit(-1)
+        # print(f"corpus: {len(token_arr)}, queries: {len(queries)}")
+        s = ir_model.get_similarity(token_arr, queries)
+
+        # print(s.shape)
+        similarity_sum = np.sum(s, axis=1)
+        # print(similarity_sum)
+        # print(len(similarity_sum))
+        order_arr = np.argsort(similarity_sum)
+        apfd_v = ehelper.APFD(faults_arr, order_arr)
+        print(f"model: {ir_model.name}, commit: {ci_obj.commit_hash}, apfd: {apfd_v}")
+        apfd_res.append(apfd_v)
+    print(f"model: {ir_model.name}, avg apfd: {np.average(apfd_res)}")
+
+
+if __name__ == '__main__':
+    # data_path = Path("dataset/data0.json")
+    # ci_obj = CIObj.load_from_json("dataset/data0.json")
+    # ci_obj.print_with_intent()
+    # cia = CIAnalysis()
+    # for i in range(20):
+    #     ci_obj = CIObj.load_from_json(f"dataset/data{i}.json")
+    #     cia.ci_objs.append(ci_obj)
+    # pickle.dump(cia, Path("cia.pkl").open("wb"))
+
+    linux_path = '/home/wanghaichi/linux'
+    gitHelper = GitHelper(linux_path)
+    ehelper = EHelper()
+    # cia = load_cia("cia.pkl")
+
+    # for i in range(len(cia.ci_objs) -
+    #     gitHelper.diff(cia.ci_objs[i].commit_hash, cia.ci_objs[i+1].commit_hash)
+
+    # cia = cia.select("arm64/defconfig+arm64-chromebook")
+    # cia.filter_unknown_test_cases()
+    # cia.filter_always_failed_test_cases()
+    # cia.filter_no_file_test_cases()
+    # cia.filter_c_test_cases()
+
+    # pickle.dump(cia, Path("cia-filter.pkl").open("wb"))
+    cia = load_cia("cia-filter.pkl")
+
+    cia.combine_same_test_file_case()
+    exit(-1)
+
+
+
+    cia.assert_all_test_file_exists()
+    cia.statistic_data()
+
+    tokenizers = [AstTokenizer()]
+    ir_models = [
+        # TfIdfModel(),
+        # RandomModel(),
+
+        LSIModel(num_topics=2),
+        # LSIModel(num_topics=3),
+        # LSIModel(num_topics=4),
+        # LSIModel(num_topics=5),
+        LDAModel(num_topics=2),
+        # LDAModel(num_topics=3),
+        # LDAModel(num_topics=4),
+        # LDAModel(num_topics=5),
+        # Bm25Model(),
+    ]
+
+    # tokenizer = AstTokenizer()
+    # ir_model = TfIdfModel()
+
+    for tokenizer in tokenizers:
+        for ir_model in ir_models:
+            do_exp(cia, tokenizer, ir_model)
