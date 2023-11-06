@@ -4,3 +4,6 @@
 [submodule "test_cases/bootrr"]
 	path = test_cases/bootrr
 	url = https://github.com/kernelci/bootrr.git
+[submodule "test_cases/igt-gpu-tools"]
+	path = test_cases/igt-gpu-tools
+	url = https://gitlab.freedesktop.org/drm/igt-gpu-tools.git
