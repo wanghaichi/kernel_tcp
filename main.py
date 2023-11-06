@@ -60,6 +60,7 @@ def do_exp(cia: CIAnalysis, tokenizer: BaseTokenizer, ir_model: BaseModel):
             else:
                 tokens = tokenizer.get_tokens(Path(t.file_path).read_text())
                 v = " ".join(tokens)
+                v = v.lower()
                 token_arr.append(v)
                 m[str(t.file_path)] = v
         queries = []
@@ -69,7 +70,7 @@ def do_exp(cia: CIAnalysis, tokenizer: BaseTokenizer, ir_model: BaseModel):
         # print(f"corpus: {len(token_arr)}, queries: {len(queries)}")
         s = ir_model.get_similarity(token_arr, queries)
 
-        # print(s.shape)
+        print(s.shape)
         similarity_sum = np.sum(s, axis=1)
         # print(similarity_sum)
         # print(len(similarity_sum))
@@ -84,17 +85,20 @@ if __name__ == '__main__':
     # data_path = Path("dataset/data0.json")
     # ci_obj = CIObj.load_from_json("dataset/data0.json")
     # ci_obj.print_with_intent()
-    # cia = CIAnalysis()
-    # for i in range(20):
-    #     ci_obj = CIObj.load_from_json(f"dataset/data{i}.json")
-    #     cia.ci_objs.append(ci_obj)
-    # pickle.dump(cia, Path("cia.pkl").open("wb"))
+    cia = CIAnalysis()
+    for i in range(20):
+        ci_obj = CIObj.load_from_json(f"dataset/next-master/data{i}.json")
+        cia.ci_objs.append(ci_obj)
+    pickle.dump(cia, Path("cia-next-master.pkl").open("wb"))
 
     linux_path = '/home/wanghaichi/linux'
     gitHelper = GitHelper(linux_path)
     ehelper = EHelper()
-    # cia = load_cia("cia.pkl")
-
+    cia = load_cia("cia.pkl")
+    for ci_obj in cia.ci_objs:
+        for build in ci_obj.builds:
+            print(build.label)
+    exit(-1)
     # for i in range(len(cia.ci_objs) -
     #     gitHelper.diff(cia.ci_objs[i].commit_hash, cia.ci_objs[i+1].commit_hash)
 
@@ -107,8 +111,8 @@ if __name__ == '__main__':
     # pickle.dump(cia, Path("cia-filter.pkl").open("wb"))
     cia = load_cia("cia-filter.pkl")
 
-    cia.combine_same_test_file_case()
-    exit(-1)
+    # cia.combine_same_test_file_case()
+    # exit(-1)
 
 
 
@@ -117,14 +121,15 @@ if __name__ == '__main__':
 
     tokenizers = [AstTokenizer()]
     ir_models = [
+        Bm25Model()
         # TfIdfModel(),
         # RandomModel(),
 
-        LSIModel(num_topics=2),
+        # LSIModel(num_topics=2),
         # LSIModel(num_topics=3),
         # LSIModel(num_topics=4),
         # LSIModel(num_topics=5),
-        LDAModel(num_topics=2),
+        # LDAModel(num_topics=2),
         # LDAModel(num_topics=3),
         # LDAModel(num_topics=4),
         # LDAModel(num_topics=5),
@@ -136,4 +141,5 @@ if __name__ == '__main__':
 
     for tokenizer in tokenizers:
         for ir_model in ir_models:
+
             do_exp(cia, tokenizer, ir_model)

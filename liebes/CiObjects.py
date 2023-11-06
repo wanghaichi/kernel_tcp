@@ -293,7 +293,8 @@ class CIAnalysis:
                 m[tc.file_path] = set()
             m[tc.file_path].add(tc.test_path)
         print(len(m.keys()))
-
+        print(m.keys())
+        exit(-1)
         in_one_m = {}
         for k, v in m.items():
             kk = v.pop()

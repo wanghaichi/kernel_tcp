@@ -34,5 +34,5 @@ class AstTokenizer(BaseTokenizer):
         for token in ast_root_node.get_tokens():
             # 针对一个节点，调用get_tokens的方法。
             if token.kind in [TokenKind.IDENTIFIER, TokenKind.LITERAL, TokenKind.COMMENT]:
-                tokens.append(token.spelling)
+                tokens.append(token.spelling.lower())
         return tokens

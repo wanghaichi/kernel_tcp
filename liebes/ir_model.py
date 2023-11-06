@@ -2,7 +2,7 @@ from rank_bm25 import BM25Okapi
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from gensim import corpora, models, similarities
-
+from collections import Counter
 import numpy as np
 
 
@@ -51,7 +51,7 @@ class TfIdfModel(BaseModel):
 class Bm25Model(BaseModel):
 
     def __init__(self, k1=2, k2=2, b=0.75):
-        super().__init__()
+        super().__init__(f"Bm25Model-k1-{k1}-k2-{k2}-b-{b}")
         self.corpus = None
         self.doc_num = 0
         self.avg_doc_len = 0
@@ -98,14 +98,15 @@ class Bm25Model(BaseModel):
 
         return score_list
 
-    def getSimilarity(self, corpus, queries):
-        self.init(np.concatenate((np.array(corpus), np.array(queries))))
+    def get_similarity(self, corpus, queries):
+        # self.init(np.concatenate((np.array(corpus), np.array(queries))))
+        self.init(np.array(corpus))
         tokenized_query = [doc.split(' ') for doc in queries]
         similarity_matrix = []
         for q in tokenized_query:
             similarity_matrix.append(self.get_doc_score(q))
 
-        return np.array(similarity_matrix)[:, :len(corpus)]
+        return np.transpose(np.array(similarity_matrix)[:, :len(corpus)])
 
 
 class LSIModel(BaseModel):
