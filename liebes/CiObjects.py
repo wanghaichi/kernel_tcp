@@ -46,7 +46,10 @@ class TestCase:
         for k in mapping_config.keys():
             if k in self.test_path:
                 self.file_path = Path(mapping_config[k]).absolute()
-                return True
+                if self.file_path.exists():
+                    return True
+                else:
+                    return False
 
         if self.test_path.startswith("ltp"):
             # res = TestCaseInfo()

@@ -50,13 +50,13 @@ class GitHelper:
             if Path(diff_obj.b_path).suffix == ".c":
                 a_lines = diff_obj.a_blob.data_stream.read().decode('utf-8').split('\n')
                 b_lines = diff_obj.b_blob.data_stream.read().decode('utf-8').split('\n')
-                diff_lines = difflib.unified_diff(a_lines, b_lines)
+                diff_lines = difflib.ndiff(a_lines, b_lines)
                 temp = []
                 for line in diff_lines:
                     if line.startswith("+") or line.startswith("-"):
                         line = line.removeprefix("+").removeprefix("-").strip()
                         temp.append(line)
-                diff_content.append("\n".join(diff_lines))
+                diff_content.append("\n".join(temp))
             pass
 
         return diff_content

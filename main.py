@@ -73,7 +73,7 @@ def do_exp(cia: CIAnalysis, tokenizer: BaseTokenizer, ir_model: BaseModel):
         similarity_sum = np.sum(s, axis=1)
         # print(similarity_sum)
         # print(len(similarity_sum))
-        order_arr = np.argsort(similarity_sum)
+        order_arr = np.argsort(similarity_sum)[::-1]
         apfd_v = ehelper.APFD(faults_arr, order_arr)
         print(f"model: {ir_model.name}, commit: {ci_obj.commit_hash}, apfd: {apfd_v}")
         apfd_res.append(apfd_v)
@@ -81,21 +81,22 @@ def do_exp(cia: CIAnalysis, tokenizer: BaseTokenizer, ir_model: BaseModel):
 
 
 if __name__ == '__main__':
-    # data_path = Path("dataset/data0.json")
-    # ci_obj = CIObj.load_from_json("dataset/data0.json")
+    # data_path = Path("dataset/mainline-master/data0.json")
+    # ci_obj = CIObj.load_from_json("dataset/mainline-master/data0.json")
     # ci_obj.print_with_intent()
     # cia = CIAnalysis()
     # for i in range(20):
-    #     ci_obj = CIObj.load_from_json(f"dataset/data{i}.json")
+    #     ci_obj = CIObj.load_from_json(f"dataset/mainline-master/data{i}.json")
     #     cia.ci_objs.append(ci_obj)
     # pickle.dump(cia, Path("cia.pkl").open("wb"))
 
-    linux_path = '/home/wanghaichi/linux'
+    linux_path = '/home/duyiheng/linux/linux'
     gitHelper = GitHelper(linux_path)
     ehelper = EHelper()
+    
     # cia = load_cia("cia.pkl")
 
-    # for i in range(len(cia.ci_objs) -
+    # for i in range(len(cia.ci_objs) - 1):
     #     gitHelper.diff(cia.ci_objs[i].commit_hash, cia.ci_objs[i+1].commit_hash)
 
     # cia = cia.select("arm64/defconfig+arm64-chromebook")
@@ -108,7 +109,7 @@ if __name__ == '__main__':
     cia = load_cia("cia-filter.pkl")
 
     cia.combine_same_test_file_case()
-    exit(-1)
+    # exit(-1)
 
 
 
@@ -120,15 +121,15 @@ if __name__ == '__main__':
         # TfIdfModel(),
         # RandomModel(),
 
-        LSIModel(num_topics=2),
+        # LSIModel(num_topics=2),
         # LSIModel(num_topics=3),
         # LSIModel(num_topics=4),
         # LSIModel(num_topics=5),
-        LDAModel(num_topics=2),
+        # LDAModel(num_topics=2),
         # LDAModel(num_topics=3),
         # LDAModel(num_topics=4),
         # LDAModel(num_topics=5),
-        # Bm25Model(),
+        Bm25Model(),
     ]
 
     # tokenizer = AstTokenizer()

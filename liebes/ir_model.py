@@ -4,7 +4,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 from gensim import corpora, models, similarities
 
 import numpy as np
-
+from collections import Counter
 
 class BaseModel:
     def __init__(self, name="BaseVirtualIrModel"):
@@ -39,12 +39,15 @@ class TfIdfModel(BaseModel):
         return tfidf_matrix.toarray()
 
     def get_similarity(self, corpus, queries):
-        temp = np.concatenate((np.array(corpus), np.array(queries)))
-        tfidf_matrix = self.vectorization(temp)
+        # temp = np.concatenate((np.array(corpus), np.array(queries)))
+        # tfidf_matrix = self.vectorization(temp)
+        tfidf_matrix = self.vectorization(corpus)
+        query_vector = self.vectorizer.transform(queries)
 
         # 计算余弦相似度
-        cosine_similarity_matrix = cosine_similarity(tfidf_matrix)
-        similarity_matrix = cosine_similarity_matrix[: len(corpus), len(corpus):]
+        # cosine_similarity_matrix = cosine_similarity(tfidf_matrix)
+        # similarity_matrix = cosine_similarity_matrix[: len(corpus), len(corpus):]
+        similarity_matrix = np.transpose(cosine_similarity(query_vector, tfidf_matrix))
         return similarity_matrix
 
 
@@ -98,14 +101,14 @@ class Bm25Model(BaseModel):
 
         return score_list
 
-    def getSimilarity(self, corpus, queries):
-        self.init(np.concatenate((np.array(corpus), np.array(queries))))
+    def get_similarity(self, corpus, queries):
+        self.init(corpus)
         tokenized_query = [doc.split(' ') for doc in queries]
         similarity_matrix = []
         for q in tokenized_query:
             similarity_matrix.append(self.get_doc_score(q))
 
-        return np.array(similarity_matrix)[:, :len(corpus)]
+        return np.transpose(np.array(similarity_matrix))
 
 
 class LSIModel(BaseModel):
