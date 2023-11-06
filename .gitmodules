@@ -1,3 +1,6 @@
 [submodule "test_cases/ltp"]
 	path = test_cases/ltp
 	url = https://github.com/linux-test-project/ltp.git
+[submodule "test_cases/bootrr"]
+	path = test_cases/bootrr
+	url = https://github.com/kernelci/bootrr.git
