@@ -7,6 +7,8 @@ from liebes.test_path_mapping import mapping_config
 
 
 class TestCase:
+    not_mapped_set = set()
+
     def __init__(self, test_path, status):
         self.test_path = test_path
         self.status = status
@@ -52,8 +54,6 @@ class TestCase:
                     return False
 
         if self.test_path.startswith("ltp"):
-            # res = TestCaseInfo()
-            # TODO
             pass
         if self.test_path.startswith("kselftest"):
             # if "kselftest-lib.lib_prime_numbers_sh" in test_path:
@@ -269,6 +269,10 @@ class CIAnalysis:
                         if test_case.map_test():
                             temp.append(test_case)
                             after += 1
+                        else:
+                            if "login" in test_case.test_path or "speculative" in test_case.test_path:
+                                continue
+                            TestCase.not_mapped_set.add(f"{test_plan.test_plan}: {test_case.test_path}")
                         before += 1
                     test_plan.test_cases = temp
         print(f"filter {before - after} no file test cases, reduce test_cases from {before} to {after}")
@@ -311,7 +315,6 @@ class CIAnalysis:
                 res.append(tc)
         print(len(test_cases))
         print(len(res))
-
 
     def assert_all_test_file_exists(self):
         flag = True
