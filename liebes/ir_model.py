@@ -1,9 +1,8 @@
-from rank_bm25 import BM25Okapi
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from gensim import corpora, models, similarities
-from collections import Counter
 import numpy as np
+from collections import Counter
 
 
 class BaseModel:
@@ -39,12 +38,15 @@ class TfIdfModel(BaseModel):
         return tfidf_matrix.toarray()
 
     def get_similarity(self, corpus, queries):
-        temp = np.concatenate((np.array(corpus), np.array(queries)))
-        tfidf_matrix = self.vectorization(temp)
+        # temp = np.concatenate((np.array(corpus), np.array(queries)))
+        # tfidf_matrix = self.vectorization(temp)
+        tfidf_matrix = self.vectorization(corpus)
+        query_vector = self.vectorizer.transform(queries)
 
         # 计算余弦相似度
-        cosine_similarity_matrix = cosine_similarity(tfidf_matrix)
-        similarity_matrix = cosine_similarity_matrix[: len(corpus), len(corpus):]
+        # cosine_similarity_matrix = cosine_similarity(tfidf_matrix)
+        # similarity_matrix = cosine_similarity_matrix[: len(corpus), len(corpus):]
+        similarity_matrix = np.transpose(cosine_similarity(query_vector, tfidf_matrix))
         return similarity_matrix
 
 
@@ -87,7 +89,7 @@ class Bm25Model(BaseModel):
                 continue
             score += self.idf[q] * (self.tf[index][q] * (self.k1 + 1) / (
                     self.tf[index][q] + self.k1 * (1 - self.b + self.b * doc_len / self.avg_doc_len))) * (
-                                 qf[q] * (self.k2 + 1) / (qf[q] + self.k2))
+                             qf[q] * (self.k2 + 1) / (qf[q] + self.k2))
 
         return score
 
@@ -99,14 +101,14 @@ class Bm25Model(BaseModel):
         return score_list
 
     def get_similarity(self, corpus, queries):
-        # self.init(np.concatenate((np.array(corpus), np.array(queries))))
-        self.init(np.array(corpus))
+
+        self.init(corpus)
         tokenized_query = [doc.split(' ') for doc in queries]
         similarity_matrix = []
         for q in tokenized_query:
             similarity_matrix.append(self.get_doc_score(q))
 
-        return np.transpose(np.array(similarity_matrix)[:, :len(corpus)])
+        return np.transpose(np.array(similarity_matrix))
 
 
 class LSIModel(BaseModel):
