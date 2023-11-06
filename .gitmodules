@@ -7,3 +7,6 @@
 [submodule "test_cases/igt-gpu-tools"]
 	path = test_cases/igt-gpu-tools
 	url = https://gitlab.freedesktop.org/drm/igt-gpu-tools.git
+[submodule "test_cases/kernelci-core"]
+	path = test_cases/kernelci-core
+	url = https://github.com/kernelci/kernelci-core.git
