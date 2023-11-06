@@ -10,3 +10,6 @@
 [submodule "test_cases/kernelci-core"]
 	path = test_cases/kernelci-core
 	url = https://github.com/kernelci/kernelci-core.git
+[submodule "test_cases/test-definitions"]
+	path = test_cases/test-definitions
+	url = https://github.com/kernelci/test-definitions.git
