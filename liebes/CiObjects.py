@@ -9,20 +9,44 @@ from liebes.test_path_mapping import mapping_config
 class TestCase:
     not_mapped_set = set()
 
-    def __init__(self, test_path, status):
+    '''
+    0: "Test executed successfully"
+    1: "Test execution failed"
+    2: "Test execution regressed"
+    3: "Test execution status unknown" or otherwise
+    '''
+
+    def __init__(self, test_path, status, test_id="", duration=-1, build_id=""):
         self.test_path = test_path
+        self.id = test_id
+        self.duration = duration
         self.status = status
+        self.build_id = build_id
+        # if status == "Test executed successfully":
+        #     self.status = 0
+        # elif status == "Test execution failed":
+        #     self.status = 1
+        # elif status == "Test execution regressed":
+        #     self.status = 2
+        # else:
+        #     self.status = 3
         self.file_path = ""
         self.type = ""
 
     def is_pass(self):
-        return self.status == "Test executed successfully"
+        return self.status == 0
 
     def is_unknown(self):
-        return self.status == "Test execution status unknown" or self.status == ""
+        return self.status == 3
 
     def is_failed(self):
-        return self.status == "Test execution failed" or self.status == "Test execution regressed"
+        return self.status in [1, 2]
+
+    def merge_status(self, other_testcase: 'TestCase'):
+        if self.is_pass() and other_testcase.is_pass():
+            pass
+        else:
+            self.status = 1
 
     @staticmethod
     def load_from_dic(raw_data):
@@ -34,8 +58,29 @@ class TestCase:
             case_list.append(t)
         return case_list
 
+    @staticmethod
+    def load_from_json2(json_dic: dict):
+        if not {"path", "status", "id", "build_id"}.issubset(json_dic.keys()):
+            return None
+        duration = -1
+        if "duration" in json_dic.keys():
+            duration = json_dic["duration"]
+        t = TestCase(
+            test_path=json_dic["path"],
+            status=json_dic["status"],
+            test_id=json_dic["id"],
+            duration=duration,
+            build_id=json_dic["build_id"],
+        )
+        return t
+
     def __str__(self):
-        return f"TestCase: {self.test_path}, Status: {self.status}"
+        return (f"TestCase: {self.test_path}\n"
+                f"Status: {self.status}\n"
+                f"ID: {self.id}\n"
+                f"Duration: {self.duration}\n"
+                f"BuildID: {self.build_id}\n"
+                f"")
 
     def map_test(self) -> bool:
         if self.test_path.startswith("ltp"):
@@ -122,12 +167,18 @@ class Test:
 
 
 class Build:
-    def __init__(self, config, status, tests=None):
+    def __init__(self, config="", status="Unknown", duration=-1, build_id="", checkout_id="", tests=None):
         self.config = config
         self.status = status
         self.tests = tests if tests is not None else []
+        self.duration = duration
+        self.id = build_id
+        self.checkout_id = checkout_id
         temp = self.config.split("/")
-        self.label = temp[6] + "/" + temp[7]
+        if len(temp) < 7:
+            self.label = ""
+        else:
+            self.label = temp[6] + "/" + temp[7]
 
     @staticmethod
     def load_from_dic(raw_data: dict):
@@ -140,19 +191,38 @@ class Build:
             build_list.append(b)
         return build_list
 
+    @staticmethod
+    def load_from_json2(json_dict: dict):
+        if not {"config_name", "duration", "id", "checkout_id"}.issubset(json_dict.keys()):
+            return None
+        build_obj = Build(
+            config=json_dict["config_name"],
+            duration=json_dict["duration"],
+            build_id=json_dict["id"],
+            checkout_id=json_dict["checkout_id"],
+        )
+        return build_obj
+
     def __str__(self):
         tests_str = "\n".join(str(test) for test in self.tests)
-        return f"Build:\nConfig: {self.config}\nStatus: {self.status}\nTests:\n{tests_str}"
+        return (f"Build:\n"
+                f"Config: {self.config}\n"
+                f"Status: {self.status}\n"
+                f"Duration: {self.duration}\n"
+                f"ID: {self.id}\n"
+                f"Tests:\n{tests_str}")
 
     def get_all_testcases(self) -> List['TestCase']:
         return [test_case for test_plan in self.tests for test_case in test_plan.test_cases]
 
 
 class CIObj:
-    def __init__(self, commit_hash, branch, date, builds=None):
+    def __init__(self, commit_hash, branch, date, repo="", obj_id="", builds=None):
         self.commit_hash = commit_hash
         self.branch = branch
         self.date = date
+        self.repo = repo
+        self.id = obj_id
         self.builds = builds if builds is not None else []
 
     @staticmethod
@@ -160,6 +230,21 @@ class CIObj:
         raw_data = json.load(Path(json_path).open("r"))
         ci_obj = CIObj(raw_data["Commit"], raw_data["Kernel"], raw_data["Date"])
         ci_obj.builds = Build.load_from_dic(raw_data["build_detail"])
+        return ci_obj
+
+    # for new dataset
+    @staticmethod
+    def load_from_json2(json_dic: dict):
+        if not {"git_commit_hash", "git_repository_branch", "id", "start_time", "git_repository_url"}.issubset(
+                json_dic.keys()):
+            return None
+        ci_obj = CIObj(
+            commit_hash=json_dic["git_commit_hash"],
+            branch=json_dic["git_repository_branch"],
+            date=json_dic["start_time"],
+            repo=json_dic["git_repository_url"],
+            obj_id=json_dic["id"]
+        )
         return ci_obj
 
     def print_with_intent(self):
@@ -185,7 +270,13 @@ class CIObj:
 
     def __str__(self):
         builds_str = "\n".join(str(build) for build in self.builds)
-        return f"CIObj:\nCommit Hash: {self.commit_hash}\nBranch: {self.branch}\nDate: {self.date}\nBuilds:\n{builds_str}"
+        return (f"CIObj:\n"
+                f"Commit Hash: {self.commit_hash}\n"
+                f"Branch: {self.branch}\n"
+                f"Date: {self.date}\n"
+                f"Repo: {self.repo}\n"
+                f"ID: {self.id}\n"
+                f"Builds:\n{builds_str}")
 
     def get_all_testcases(self) -> List['TestCase']:
         return [test_case for build in self.builds for test_case in build.get_all_testcases()]
@@ -257,6 +348,11 @@ class CIAnalysis:
 
             path_set = set([x.test_path for x in test_cases])
             print(f"{ci_obj.branch}: {l1} / {len(test_cases)} failed. Unique test path count: {len(path_set)}")
+        file_set = set()
+        test_cases = self.get_all_testcases()
+        for t in test_cases:
+            file_set.add(t.file_path)
+        print(f"Unique file count: {len(file_set)}")
 
     def filter_no_file_test_cases(self):
         before = 0
@@ -292,29 +388,61 @@ class CIAnalysis:
                     test_plan.test_cases = temp
         print(f"filter {before - after} not c test cases, reduce test_cases from {before} to {after}")
 
+    def filter_branches_with_few_testcases(self, minimal_testcases=20):
+        before = len(self.get_all_testcases())
+        before_branch = len(self.ci_objs)
+        temp_obj = []
+        for ci_obj in self.ci_objs:
+            if len(ci_obj.get_all_testcases()) >= minimal_testcases:
+                temp_obj.append(ci_obj)
+        self.ci_objs = temp_obj
+        after = len(self.get_all_testcases())
+        after_branch = len(self.ci_objs)
+        print(f"filter {before_branch - after_branch} branches, reduce test_cases from {before} to {after}")
+
     def combine_same_test_file_case(self):
-        test_cases = self.get_all_testcases()
-        m = {}
-        for tc in test_cases:
-            if tc.file_path not in m.keys():
-                m[tc.file_path] = set()
-            m[tc.file_path].add(tc.test_path)
-        print(len(m.keys()))
-        print(m.keys())
-        exit(-1)
-        in_one_m = {}
-        for k, v in m.items():
-            kk = v.pop()
-            in_one_m[kk] = kk
-            for temp in v:
-                in_one_m[temp] = kk
-        # print(in_one_m)
-        res = []
-        for tc in test_cases:
-            if in_one_m[tc.test_path] == tc.test_path:
-                res.append(tc)
-        print(len(test_cases))
-        print(len(res))
+        before = len(self.get_all_testcases())
+        for ci_obj in self.ci_objs:
+            status_m = {}
+            for build in ci_obj.builds:
+                for test in build.tests:
+                    temp = []
+                    for testcase in test.test_cases:
+                        if testcase.file_path in status_m.keys():
+                            status_m[testcase.file_path].merge_status(testcase)
+                            continue
+                        status_m[testcase.file_path] = testcase
+                        temp.append(testcase)
+                    test.test_cases = temp
+            # update status
+            for build in ci_obj.builds:
+                for test in build.tests:
+                    for i in range(len(test.test_cases)):
+                        test.test_cases[i].merge_status(status_m[test.test_cases[i].file_path])
+        after = len(self.get_all_testcases())
+        print(f"filter {before - after} same file cases, reduce test_cases from {before} to {after}")
+        # test_cases = self.get_all_testcases()
+        # m = {}
+        # for tc in test_cases:
+        #     if tc.file_path not in m.keys():
+        #         m[tc.file_path] = set()
+        #     m[tc.file_path].add(tc.test_path)
+        # print(len(m.keys()))
+        # print(m.keys())
+        # exit(-1)
+        # in_one_m = {}
+        # for k, v in m.items():
+        #     kk = v.pop()
+        #     in_one_m[kk] = kk
+        #     for temp in v:
+        #         in_one_m[temp] = kk
+        # # print(in_one_m)
+        # res = []
+        # for tc in test_cases:
+        #     if in_one_m[tc.test_path] == tc.test_path:
+        #         res.append(tc)
+        # print(len(test_cases))
+        # print(len(res))
 
     def assert_all_test_file_exists(self):
         flag = True
