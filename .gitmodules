@@ -13,3 +13,9 @@
 [submodule "test_cases/test-definitions"]
 	path = test_cases/test-definitions
 	url = https://github.com/kernelci/test-definitions.git
+[submodule "test_cases/kvm-unit-tests"]
+	path = test_cases/kvm-unit-tests
+	url = https://gitlab.com/kvm-unit-tests/kvm-unit-tests.git
+[submodule "test_cases/libgpiod"]
+	path = test_cases/libgpiod
+	url = https://git.kernel.org/pub/scm/libs/libgpiod/libgpiod.git/

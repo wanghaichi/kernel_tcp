@@ -1,0 +1,8 @@
+ROOT_PATH = "KernelTCP"
+
+[LOG]
+# logging
+LEVEL = "DEBUG"
+PATH = "logs"
+FORMAT = "%(process)d %(threadName)s %(thread)d %(asctime)s  %(filename)s : %(levelname)s  %(message)s"
+DATE_FORMAT = "%Y-%m-%d %A %H:%M:%S"

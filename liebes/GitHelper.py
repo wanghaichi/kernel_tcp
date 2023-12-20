@@ -10,6 +10,13 @@ class GitHelper:
     def __init__(self, repo_path):
         self.repo = Repo(repo_path)
 
+    def get_commit_info(self, commit_id):
+        try:
+            commit_obj = self.repo.commit(commit_id)
+        except ValueError as e:
+            return None
+        return commit_obj
+
     def get_diff_contents(self, commit, to_commit):
         commit_obj_a = self.repo.commit(commit)
         commit_obj_b = self.repo.commit(to_commit)
@@ -32,15 +39,24 @@ class GitHelper:
         diff_content = []
 
         for diff_obj in diff.iter_change_type("A"):
-            diff_content.append(diff_obj.b_blob.data_stream.read().decode('utf-8'))
+            try:
+                diff_content.append(diff_obj.b_blob.data_stream.read().decode('utf-8'))
+            except Exception as e:
+                pass
             pass
 
         for diff_obj in diff.iter_change_type("D"):
-            diff_content.append(diff_obj.a_blob.data_stream.read().decode('utf-8'))
+            try:
+                diff_content.append(diff_obj.a_blob.data_stream.read().decode('utf-8'))
+            except Exception as e:
+                pass
             pass
 
         for diff_obj in diff.iter_change_type("R"):
-            diff_content.append(diff_obj.b_blob.data_stream.read().decode('utf-8'))
+            try:
+                diff_content.append(diff_obj.b_blob.data_stream.read().decode('utf-8'))
+            except Exception as e:
+                pass
             pass
         # TODO 当以整个文件作为粒度的时候，例如某个文件发生了变化，前后版本分别为a_blob和b_blob，那么在
         # TODO 计算文件的时候是将两个版本的内容都加入到语料中，还是应该只加入修改后的？
@@ -48,15 +64,18 @@ class GitHelper:
         # TODO 添加参数，适配context的大小，目前的context大小为0，即没有考虑上下文。
         for diff_obj in diff.iter_change_type("M"):
             if Path(diff_obj.b_path).suffix == ".c":
-                a_lines = diff_obj.a_blob.data_stream.read().decode('utf-8').split('\n')
-                b_lines = diff_obj.b_blob.data_stream.read().decode('utf-8').split('\n')
-                diff_lines = difflib.ndiff(a_lines, b_lines)
-                temp = []
-                for line in diff_lines:
-                    if line.startswith("+") or line.startswith("-"):
-                        line = line.removeprefix("+").removeprefix("-").strip()
-                        temp.append(line)
-                diff_content.append("\n".join(temp))
+                try:
+                    a_lines = diff_obj.a_blob.data_stream.read().decode('utf-8').split('\n')
+                    b_lines = diff_obj.b_blob.data_stream.read().decode('utf-8').split('\n')
+                    diff_lines = difflib.ndiff(a_lines, b_lines)
+                    temp = []
+                    for line in diff_lines:
+                        if line.startswith("+") or line.startswith("-"):
+                            line = line.removeprefix("+").removeprefix("-").strip()
+                            temp.append(line)
+                    diff_content.append("\n".join(temp))
+                except Exception as e:
+                    print(f"{commit}, {to_commit} error happened! need check!")
             pass
 
         return diff_content

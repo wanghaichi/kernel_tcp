@@ -1,37 +1,110 @@
-import json
-from itertools import chain
-from typing import List
 import pickle
+from enum import Enum
 from pathlib import Path
-from liebes.test_path_mapping import mapping_config
+from typing import List
+
+from pqdm.threads import pqdm
+from sqlalchemy import Column, String, ForeignKey, Text, Integer
+from sqlalchemy.orm import declarative_base, relationship
+from tqdm import tqdm
+
+from liebes.ci_logger import logger
+from liebes.test_path_mapping import mapping_config, has_mapping
+
+Base = declarative_base()
 
 
-class TestCase:
-    not_mapped_set = set()
+class TestCaseType(Enum):
+    UNKNOWN = 0
+    C = 1
+    SH = 2
+    PY = 3
+
+
+class Build:
+    def __init__(self, db_instance: 'DBBuild'):
+        self.instance = db_instance
+        self.tests = [Test(x) for x in self.instance.tests]
+
+    @property
+    def label(self) -> str:
+        return self.instance.config_name
+
+    def get_all_testcases(self) -> List['Test']:
+        return self.tests
+
+    def __str__(self):
+        return str(self.instance)
+
+
+class DBBuild(Base):
+    __tablename__ = 'build'
+    checkout_id = Column(String, ForeignKey('checkout.id'), primary_key=True)
+    id = Column(String, primary_key=True)
+    origin = Column(String)
+    comment = Column(Text)
+    start_time = Column(String)
+    duration = Column(String)
+    architecture = Column(String)
+    command = Column(Text)
+    compiler = Column(String)
+    input_files = Column(Text)
+    output_files = Column(Text)
+    config_name = Column(String)
+    config_url = Column(String)
+    log_url = Column(String)
+    valid = Column(Integer)
+    misc = Column(Text)
+
+    checkout = relationship('DBCheckout', back_populates='builds')
+    tests = relationship('DBTest', back_populates='build')
+
+    def __str__(self):
+        return f"Build{{checkout_id: {self.checkout_id}, id: {self.id}, origin: {self.origin}, " \
+               f"comment: {self.comment}, start_time: {self.start_time}, duration: {self.duration}, " \
+               f"architecture: {self.architecture}, command: {self.command}, compiler: {self.compiler}, " \
+               f"input_files: {self.input_files}, output_files: {self.output_files}, " \
+               f"config_name: {self.config_name}, config_url: {self.config_url}, log_url: {self.log_url}, " \
+               f"valid: {self.valid}, misc: {self.misc}, tests: {len(self.tests)}tests}}"
+
+
+class Test:
+    def __init__(self, db_instance: 'DBTest'):
+        self.instance = db_instance
+        self._type = None
+        self.file_path = None
+        if self.instance.status == "Test executed successfully" or self.instance.status.lower() == "pass":
+            self.status = 0
+        elif self.instance.status == "Test execution failed" or self.instance.status.lower() == "fail":
+            self.status = 1
+        elif self.instance.status == "Test execution regressed":
+            self.status = 2
+        else:
+            self.status = 3
+
+    def __str__(self):
+        return str(self.instance)
 
     '''
-    0: "Test executed successfully"
-    1: "Test execution failed"
-    2: "Test execution regressed"
-    3: "Test execution status unknown" or otherwise
-    '''
+        0: "Test executed successfully" "PASS"
+        1: "Test execution failed" "FAIL"
+        2: "Test execution regressed"
+        3: "Test execution status unknown" or otherwise "SKIP"
+        '''
 
-    def __init__(self, test_path, status, test_id="", duration=-1, build_id=""):
-        self.test_path = test_path
-        self.id = test_id
-        self.duration = duration
-        self.status = status
-        self.build_id = build_id
-        # if status == "Test executed successfully":
-        #     self.status = 0
-        # elif status == "Test execution failed":
-        #     self.status = 1
-        # elif status == "Test execution regressed":
-        #     self.status = 2
-        # else:
-        #     self.status = 3
-        self.file_path = ""
-        self.type = ""
+    @property
+    def type(self):
+        if self._type is None:
+            if self.file_path is not None and self.file_path != "" and Path(self.file_path).exists():
+                if Path(self.file_path).suffix.lower() == ".c":
+                    self._type = TestCaseType.C
+                if Path(self.file_path).suffix.lower() == ".sh" or Path(self.file_path).suffix == "":
+                    self._type = TestCaseType.SH
+                if Path(self.file_path).suffix.lower() == ".py":
+                    self._type = TestCaseType.PY
+                if self._type is None:
+                    self._type = TestCaseType.UNKNOWN
+        return self._type
 
     def is_pass(self):
         return self.status == 0
@@ -42,351 +115,259 @@ class TestCase:
     def is_failed(self):
         return self.status in [1, 2]
 
-    def merge_status(self, other_testcase: 'TestCase'):
+    def merge_status(self, other_testcase: 'DBTest'):
         if self.is_pass() and other_testcase.is_pass():
             pass
         else:
             self.status = 1
 
-    @staticmethod
-    def load_from_dic(raw_data):
-        case_list = []
-        for r_case in raw_data:
-            if not {"Test case path", "Status"}.issubset(r_case.keys()):
-                continue
-            t = TestCase(r_case["Test case path"], r_case["Status"])
-            case_list.append(t)
-        return case_list
-
-    @staticmethod
-    def load_from_json2(json_dic: dict):
-        if not {"path", "status", "id", "build_id"}.issubset(json_dic.keys()):
-            return None
-        duration = -1
-        if "duration" in json_dic.keys():
-            duration = json_dic["duration"]
-        t = TestCase(
-            test_path=json_dic["path"],
-            status=json_dic["status"],
-            test_id=json_dic["id"],
-            duration=duration,
-            build_id=json_dic["build_id"],
-        )
-        return t
-
-    def __str__(self):
-        return (f"TestCase: {self.test_path}\n"
-                f"Status: {self.status}\n"
-                f"ID: {self.id}\n"
-                f"Duration: {self.duration}\n"
-                f"BuildID: {self.build_id}\n"
-                f"")
-
     def map_test(self) -> bool:
-        if self.test_path.startswith("ltp"):
-            self.type = "ltp"
-        elif self.test_path.startswith("kselftest"):
-            self.type = "kselftest"
-        elif self.test_path.startswith("baseline"):
-            self.type = "baseline"
-
-        for k in mapping_config.keys():
-            if k in self.test_path:
-                self.file_path = Path(mapping_config[k]).absolute()
-                if self.file_path.exists():
-                    return True
-                else:
-                    return False
-
-        if self.test_path.startswith("ltp"):
-            pass
-        if self.test_path.startswith("kselftest"):
-            # if "kselftest-lib.lib_prime_numbers_sh" in test_path:
-            #     print(123)
-            root = "test_cases/selftests"
-            temp = self.test_path.split(".")
-            test_prefix = temp[0].split("-")[1]
-            test_suffix = temp[1]
-            temp = test_suffix.split("_")
-            if len(temp) == 1:
-                test_suffix = temp[0]
-            else:
-                test_suffix = temp[1]
-            file_suffix = [".c", ".sh"]
-            for s in file_suffix:
-                temp_file = Path(root) / test_prefix / (test_suffix + s)
-                if temp_file.exists():
-                    self.type = s
-                    self.file_path = temp_file.absolute()
-                    return True
-        if self.test_path.startswith("baseline"):
-            pass
-        if self.test_path.startswith("lc-compliance"):
-            self.type = "lc-compliance"
-            self.file_path = Path(
-                "test_cases/kernelci-core/config/rootfs/debos/overlays/libcamera/usr/bin/lc-compliance-parser.sh").absolute()
+        if self.file_path is not None:
             return True
-        if self.test_path.startswith("v4l2-compliance"):
-            self.type = "v4l2-compliance"
-            self.file_path = Path(
-                "test_cases/kernelci-core/config/rootfs/debos/overlays/v4l2/usr/bin/v4l2-parser.sh").absolute()
-            return True
-        if self.test_path.startswith("igt"):
-            temp = self.test_path.split(".")
-            if len(temp) <= 1:
-                return False
-            fp = temp[1] + ".c"
-            fp_prefix = Path("test_cases/igt-gpu-tools/tests")
-            if (fp_prefix / fp).exists():
-                self.type = "igt"
-                self.file_path = (fp_prefix / fp).absolute()
+        p = has_mapping(self.instance.path)
+        if p is not None:
+            if Path(p).exists():
+                self.file_path = Path(p)
                 return True
         return False
+        # if self.instance.path.startswith("lc-compliance"):
+        #     self.file_path = Path(
+        #         "test_cases/kernelci-core/config/rootfs/debos/overlays/libcamera/usr/bin/lc-compliance-parser.sh").absolute()
+        #     return True
+        # if self.instance.path.startswith("v4l2-compliance"):
+        #     self.file_path = Path(
+        #         "test_cases/kernelci-core/config/rootfs/debos/overlays/v4l2/usr/bin/v4l2-parser.sh").absolute()
+        #     return True
+        # if self.instance.path.startswith("igt"):
+        #     temp = self.instance.path.split(".")
+        #     if len(temp) <= 1:
+        #         return False
+        #     fp = temp[1] + ".c"
+        #     fp_prefix = Path("test_cases/igt-gpu-tools/tests")
+        #     if (fp_prefix / fp).exists():
+        #         self.file_path = (fp_prefix / fp).absolute()
+        #         return True
 
 
-class Test:
-    def __init__(self, test_plan, status, test_cases: List[TestCase] = None):
-        self.test_plan = test_plan
-        self.status = status
-        self.test_cases = test_cases if test_cases is not None else []
+class DBTest(Base):
+    __tablename__ = 'test'
 
-    @staticmethod
-    def load_from_dic(raw_data):
-        test_list = []
-        for r_test in raw_data:
-            if not {"Test Plan", "Status", "test_case_intro"}.issubset(r_test.keys()):
-                continue
-            t = Test(r_test["Test Plan"], r_test["Status"])
-            t.test_cases = TestCase.load_from_dic(r_test["test_case_intro"])
-            test_list.append(t)
-        return test_list
+    build_id = Column(String, ForeignKey('build.id'), primary_key=True)
+    id = Column(String, primary_key=True)
+    origin = Column(String)
+    path = Column(String)
+    log_url = Column(String)
+    status = Column(String)
+    waived = Column(String)
+    start_time = Column(String)
+    output_files = Column(Text)
+    has_known_issues = Column(String)
+    known_issues = Column(Text)
 
-    def __str__(self):
-        test_cases_str = "\n".join(str(test_case) for test_case in self.test_cases)
-        return f"Test:\nTest Plan: {self.test_plan}\nStatus: {self.status}\nTest Cases:\n{test_cases_str}"
-
-
-class Build:
-    def __init__(self, config="", status="Unknown", duration=-1, build_id="", checkout_id="", tests=None):
-        self.config = config
-        self.status = status
-        self.tests = tests if tests is not None else []
-        self.duration = duration
-        self.id = build_id
-        self.checkout_id = checkout_id
-        temp = self.config.split("/")
-        if len(temp) < 7:
-            self.label = ""
-        else:
-            self.label = temp[6] + "/" + temp[7]
-
-    @staticmethod
-    def load_from_dic(raw_data: dict):
-        build_list = []
-        for r_build in raw_data:
-            if not {"Kernel config", "Status", "Test Results"}.issubset(r_build.keys()):
-                continue
-            b = Build(r_build["Kernel config"], r_build["Status"])
-            b.tests = Test.load_from_dic(r_build["Test Results"])
-            build_list.append(b)
-        return build_list
-
-    @staticmethod
-    def load_from_json2(json_dict: dict):
-        if not {"config_name", "duration", "id", "checkout_id"}.issubset(json_dict.keys()):
-            return None
-        build_obj = Build(
-            config=json_dict["config_name"],
-            duration=json_dict["duration"],
-            build_id=json_dict["id"],
-            checkout_id=json_dict["checkout_id"],
-        )
-        return build_obj
+    build = relationship('DBBuild', back_populates='tests')
 
     def __str__(self):
-        tests_str = "\n".join(str(test) for test in self.tests)
-        return (f"Build:\n"
-                f"Config: {self.config}\n"
-                f"Status: {self.status}\n"
-                f"Duration: {self.duration}\n"
-                f"ID: {self.id}\n"
-                f"Tests:\n{tests_str}")
-
-    def get_all_testcases(self) -> List['TestCase']:
-        return [test_case for test_plan in self.tests for test_case in test_plan.test_cases]
+        return f"Test{{ build_id: {self.build_id}, id: {self.id}, origin: {self.origin}, " \
+               f"path: {self.path}, log_url: {self.log_url}, status: {self.status}, " \
+               f"waived: {self.waived}, start_time: {self.start_time}, output_files: {self.output_files}}}"
 
 
-class CIObj:
-    def __init__(self, commit_hash, branch, date, repo="", obj_id="", builds=None):
-        self.commit_hash = commit_hash
-        self.branch = branch
-        self.date = date
-        self.repo = repo
-        self.id = obj_id
-        self.builds = builds if builds is not None else []
+class Checkout:
+    def __init__(self, db_instance: 'DBCheckout'):
+        self.instance = db_instance
+        self.builds = [Build(x) for x in self.instance.builds]
 
-    @staticmethod
-    def load_from_json(json_path: str):
-        raw_data = json.load(Path(json_path).open("r"))
-        ci_obj = CIObj(raw_data["Commit"], raw_data["Kernel"], raw_data["Date"])
-        ci_obj.builds = Build.load_from_dic(raw_data["build_detail"])
-        return ci_obj
-
-    # for new dataset
-    @staticmethod
-    def load_from_json2(json_dic: dict):
-        if not {"git_commit_hash", "git_repository_branch", "id", "start_time", "git_repository_url"}.issubset(
-                json_dic.keys()):
-            return None
-        ci_obj = CIObj(
-            commit_hash=json_dic["git_commit_hash"],
-            branch=json_dic["git_repository_branch"],
-            date=json_dic["start_time"],
-            repo=json_dic["git_repository_url"],
-            obj_id=json_dic["id"]
-        )
-        return ci_obj
-
-    def print_with_intent(self):
-        output_hierarchy = str(self)
-        indent = "  "  # Specify the desired indentation string
-        intent = ""  # Initialize the intent string
-
-        for line in output_hierarchy.split("\n"):
-            if line.startswith("CIObj:"):
-                intent = ""
-            elif line.startswith("Build:"):
-                intent = indent
-            elif line.startswith("Test:"):
-                intent = indent * 2
-            elif line.startswith("TestCase:"):
-                intent = indent * 3
-
-            # Add the intent to the line
-            line_with_intent = intent + line
-
-            # Print or store the line with the added intent
-            print(line_with_intent)
-
-    def __str__(self):
-        builds_str = "\n".join(str(build) for build in self.builds)
-        return (f"CIObj:\n"
-                f"Commit Hash: {self.commit_hash}\n"
-                f"Branch: {self.branch}\n"
-                f"Date: {self.date}\n"
-                f"Repo: {self.repo}\n"
-                f"ID: {self.id}\n"
-                f"Builds:\n{builds_str}")
-
-    def get_all_testcases(self) -> List['TestCase']:
+    def get_all_testcases(self) -> List['Test']:
         return [test_case for build in self.builds for test_case in build.get_all_testcases()]
+
+    def filter_builds_with_less_tests(self, minimal_cases=100):
+        temp = []
+        for build in self.builds:
+            if len(build.get_all_testcases()) < minimal_cases:
+                continue
+            temp.append(build)
+        self.builds = temp
+
+    def select_build_by_config(self, config_name):
+        temp = []
+        for build in self.builds:
+            if build.instance.config_name == config_name:
+                temp.append(build)
+        self.builds = temp
+
+    def __str__(self):
+        return str(self.instance)
+
+
+class DBCheckout(Base):
+    __tablename__ = 'checkout'
+
+    id = Column(String, primary_key=True)
+    origin = Column(String)
+    tree_name = Column(String)
+    git_repository_url = Column(String)
+    git_commit_hash = Column(String)
+    git_repository_branch = Column(String)
+    patchset_files = Column(Text)
+    patchset_hash = Column(String)
+    comment = Column(Text)
+    start_time = Column(String)
+    contacts = Column(Text)
+    valid = Column(Integer)
+    misc = Column(Text)
+
+    builds = relationship('DBBuild', back_populates='checkout')
+
+    def __str__(self):
+        return f"Checkout{{id: {self.id}, origin: {self.origin}, tree_name: {self.tree_name}, " \
+               f"git_repository_url: {self.git_repository_url}, git_commit_hash: {self.git_commit_hash}, " \
+               f"git_repository_branch: {self.git_repository_branch}, patchset_files: {self.patchset_files}, " \
+               f"patchset_hash: {self.patchset_hash}, comment: {self.comment}, start_time: {self.start_time}, " \
+               f"contacts: {self.contacts}, valid: {self.valid}, misc: {self.misc}, builds: {len(self.builds)} builds}}"
 
 
 class CIAnalysis:
-    def __init__(self, obj_list: List[CIObj] = None):
+    def __init__(self, obj_list: List['Checkout'] = None):
         self.ci_objs = obj_list if obj_list is not None else []
+        self.number_of_threads = 1
+        self.execution_number_per_thread = 1024
+        self._test_case_status_map = None
+
+    def set_parallel_number(self, number_of_threads: int):
+        if not hasattr(self, "number_of_threads"):
+            setattr(self, "number_of_threads", 1)
+            setattr(self, "execution_number_per_thread", 1024)
+        self.number_of_threads = number_of_threads
+        self.execution_number_per_thread = 32
 
     def reorder(self):
-        sorted(self.ci_objs, key=lambda x: x.date)
+        self.ci_objs = sorted(self.ci_objs, key=lambda x: x.instance.start_time)
 
-    def select(self, build_label: str) -> 'CIAnalysis':
-        res = []
+    def select(self, build_config: str):
         for ci_obj in self.ci_objs:
-            temp = CIObj(ci_obj.commit_hash, ci_obj.branch, ci_obj.date)
-            temp.builds = [x for x in ci_obj.builds if x.label == build_label]
-            if len(temp.builds) > 0:
-                res.append(temp)
-        return CIAnalysis(res)
+            ci_obj.select_build_by_config(build_config)
+        # return CIAnalysis(res)
 
-    def get_all_testcases(self) -> List['TestCase']:
+    def get_all_testcases(self) -> List['Test']:
         return [test_case for ci_obj in self.ci_objs for test_case in ci_obj.get_all_testcases()]
 
-    def filter_unknown_test_cases(self):
-        cnt_before = 0
-        cnt_after = 0
-        for ci_obj in self.ci_objs:
+    @staticmethod
+    def _filter_unknown_test_cases(ci_objs):
+        for ci_obj in ci_objs:
             for build in ci_obj.builds:
-                for test_plan in build.tests:
-                    temp = []
-                    for test_case in test_plan.test_cases:
-                        if not test_case.is_unknown():
-                            temp.append(test_case)
-                            cnt_after += 1
-                        cnt_before += 1
-                    test_plan.test_cases = temp
-        print(f"filter {cnt_before - cnt_after} unknown test cases, reduce test_cases from {cnt_before} to {cnt_after}")
+                temp = []
+                for test_case in build.tests:
+                    if not test_case.is_unknown():
+                        temp.append(test_case)
+                build.tests = temp
+        return ci_objs
 
     # 默认已经经过`select`方法了，即build_label只存在一个
-    def filter_always_failed_test_cases(self):
-        before = 0
-        after = 0
-        test_case_map = {}
-
-        for test_case in self.get_all_testcases():
-            if test_case.test_path not in test_case_map.keys():
-                test_case_map[test_case.test_path] = False
-            test_case_map[test_case.test_path] |= test_case.is_pass()
-
-        for ci_obj in self.ci_objs:
+    # TODO 这个逻辑需要改，需要定义一下flaky test的pattern，一起过滤了
+    def filter_always_failed_test_cases(self, ci_objs):
+        # TODO 用test_path 还是 test_file作为过滤的key
+        for ci_obj in ci_objs:
             for build in ci_obj.builds:
-                for test_plan in build.tests:
-                    temp = []
-                    for test_case in test_plan.test_cases:
-                        if test_case_map[test_case.test_path]:
-                            temp.append(test_case)
-                            after += 1
-                        before += 1
-                    test_plan.test_cases = temp
+                temp = []
+                for test_case in build.tests:
+                    # TODO filter has known issues test cases
+                    if test_case.instance.has_known_issues == "1":
+                        continue
+                    if self.test_case_status_map[test_case.instance.path]:
+                        temp.append(test_case)
+                build.tests = temp
+        return ci_objs
 
-        print(f"filter {before - after} always failed test cases, reduce test_cases from {before} to {after}")
+    @property
+    def test_case_status_map(self):
+        if self._test_case_status_map is None:
+            self._test_case_status_map = {}
+            for test_case in self.get_all_testcases():
+                if test_case.instance.path not in self._test_case_status_map.keys():
+                    self._test_case_status_map[test_case.instance.path] = False
+                self._test_case_status_map[test_case.instance.path] |= test_case.is_pass()
+
+        return self._test_case_status_map
+
+    # def filter_by_unique_files(self, minimal_size=10):
+    #     before = len(self.get_all_testcases())
+    #     before_branch = len(self.ci_objs)
+    #     temp_obj = []
+    #     for ci_obj in self.ci_objs:
+    #         file_set = set([x.file_path for x in ci_obj.get_all_testcases()])
+    #     self.ci_objs = temp_obj
+    #     after = len(self.get_all_testcases())
+    #     after_branch = len(self.ci_objs)
+    #     print(f"filter {before_branch - after_branch} branches, reduce test_cases from {before} to {after}")
 
     def statistic_data(self):
         self.reorder()
+        total_c = 0
+        total_sh = 0
+        total_py = 0
         for ci_obj in self.ci_objs:
             test_cases = ci_obj.get_all_testcases()
+            if len(test_cases) < 500:
+                continue
             l1 = len([x for x in test_cases if not x.is_pass()])
+            path_set = set([x.instance.path for x in test_cases])
+            file_set = set([x.file_path for x in test_cases])
+            c_count = len([x for x in test_cases if x.type == TestCaseType.C])
+            sh_count = len([x for x in test_cases if x.type == TestCaseType.SH])
+            py_count = len([x for x in test_cases if x.type == TestCaseType.PY])
 
-            path_set = set([x.test_path for x in test_cases])
-            print(f"{ci_obj.branch}: {l1} / {len(test_cases)} failed. Unique test path count: {len(path_set)}")
+            print(
+                f"{ci_obj.instance.git_repository_branch}: {l1} / {len(test_cases)} failed. Unique test path count: {len(path_set)}. "
+                f"Unique file path count: {len(file_set)}. "
+                f"C: {c_count}, SH: {sh_count}, PY: {py_count}")
+            total_c += c_count
+            total_sh += sh_count
+            total_py += py_count
         file_set = set()
         test_cases = self.get_all_testcases()
         for t in test_cases:
             file_set.add(t.file_path)
         print(f"Unique file count: {len(file_set)}")
+        print(f"On total: C: {total_c}, SH: {total_sh}, PY: {total_py}")
 
-    def filter_no_file_test_cases(self):
-        before = 0
-        after = 0
-        for ci_obj in self.ci_objs:
+    @staticmethod
+    def _filter_no_file_test_cases(ci_objs):
+        for ci_obj in ci_objs:
             for build in ci_obj.builds:
-                for test_plan in build.tests:
-                    temp = []
-                    for test_case in test_plan.test_cases:
-                        if test_case.map_test():
-                            temp.append(test_case)
-                            after += 1
-                        else:
-                            if "login" in test_case.test_path or "speculative" in test_case.test_path:
-                                continue
-                            TestCase.not_mapped_set.add(f"{test_plan.test_plan}: {test_case.test_path}")
-                        before += 1
-                    test_plan.test_cases = temp
-        print(f"filter {before - after} no file test cases, reduce test_cases from {before} to {after}")
+                temp = []
+                for test_case in build.tests:
+                    if test_case.map_test():
+                        temp.append(test_case)
+                    # else:
+                    #     if "login" in test_case.test_path or "speculative" in test_case.test_path:
+                    #         continue
+                    # TestCase.not_mapped_set.add(f"{test_plan.test_plan}: {test_case.test_path}")
+                build.tests = temp
+        return ci_objs
 
-    def filter_c_test_cases(self):
-        before = 0
-        after = 0
-        for ci_obj in self.ci_objs:
+    def _filter_test_cases_by_type(self, ci_objs):
+
+        # logger.info("process!")
+        for ci_obj in ci_objs:
+            # logger.info("process-obj!")
             for build in ci_obj.builds:
-                for test_plan in build.tests:
-                    temp = []
-                    for test_case in test_plan.test_cases:
-                        if test_case.file_path.suffix == ".c":
-                            temp.append(test_case)
-                            after += 1
-                        before += 1
-                    test_plan.test_cases = temp
-        print(f"filter {before - after} not c test cases, reduce test_cases from {before} to {after}")
+                temp = []
+                for test_case in build.tests:
+                    if test_case.type in self.used_type():
+                        temp.append(test_case)
+                build.tests = temp
+
+        return ci_objs
+
+    def used_type(self, type_list: List[TestCaseType] = None):
+        if not hasattr(self, "_used_type"):
+            if type_list is None:
+                setattr(self, "_used_type", [TestCaseType.C, TestCaseType.SH, TestCaseType.PY])
+            else:
+                setattr(self, "_used_type", type_list)
+        elif type_list is not None:
+            self._used_type = type_list
+        return self._used_type
 
     def filter_branches_with_few_testcases(self, minimal_testcases=20):
         before = len(self.get_all_testcases())
@@ -400,58 +381,81 @@ class CIAnalysis:
         after_branch = len(self.ci_objs)
         print(f"filter {before_branch - after_branch} branches, reduce test_cases from {before} to {after}")
 
-    def combine_same_test_file_case(self):
-        before = len(self.get_all_testcases())
-        for ci_obj in self.ci_objs:
+    @staticmethod
+    def _combine_same_test_file_case(ci_objs: List['DBCheckout']):
+        for ci_obj in ci_objs:
             status_m = {}
             for build in ci_obj.builds:
-                for test in build.tests:
-                    temp = []
-                    for testcase in test.test_cases:
-                        if testcase.file_path in status_m.keys():
-                            status_m[testcase.file_path].merge_status(testcase)
-                            continue
-                        status_m[testcase.file_path] = testcase
-                        temp.append(testcase)
-                    test.test_cases = temp
+                temp = []
+                for testcase in build.tests:
+                    if testcase.file_path in status_m.keys():
+                        status_m[testcase.file_path].merge_status(testcase)
+                        continue
+                    status_m[testcase.file_path] = testcase
+                    temp.append(testcase)
+                build.tests = temp
             # update status
             for build in ci_obj.builds:
-                for test in build.tests:
-                    for i in range(len(test.test_cases)):
-                        test.test_cases[i].merge_status(status_m[test.test_cases[i].file_path])
-        after = len(self.get_all_testcases())
-        print(f"filter {before - after} same file cases, reduce test_cases from {before} to {after}")
-        # test_cases = self.get_all_testcases()
-        # m = {}
-        # for tc in test_cases:
-        #     if tc.file_path not in m.keys():
-        #         m[tc.file_path] = set()
-        #     m[tc.file_path].add(tc.test_path)
-        # print(len(m.keys()))
-        # print(m.keys())
-        # exit(-1)
-        # in_one_m = {}
-        # for k, v in m.items():
-        #     kk = v.pop()
-        #     in_one_m[kk] = kk
-        #     for temp in v:
-        #         in_one_m[temp] = kk
-        # # print(in_one_m)
-        # res = []
-        # for tc in test_cases:
-        #     if in_one_m[tc.test_path] == tc.test_path:
-        #         res.append(tc)
-        # print(len(test_cases))
-        # print(len(res))
+                for i in range(len(build.tests)):
+                    build.tests[i].merge_status(status_m[build.tests[i].file_path])
+        return ci_objs
 
     def assert_all_test_file_exists(self):
         flag = True
         for t in self.get_all_testcases():
             if not Path(t.file_path).exists():
-                print(f"{t.test_path}: {t.file_path} not exists!")
+                print(f"{t.instance.path}: {t.file_path} not exists!")
                 flag = False
         if not flag:
             exit("failed to pass assertion, solve the above file inconsistency")
+
+    def map_file_path(self):
+        for t in tqdm(self.get_all_testcases(), desc="map file path"):
+            t.map_test()
+
+    def filter_job(self, job_task: str, *args, **kwargs):
+        arguments = [self.ci_objs[i:i + self.execution_number_per_thread] for i in
+                     range(0, len(self.ci_objs), self.execution_number_per_thread)]
+        job_func = None
+        if job_task == "FILTER_UNKNOWN_CASE":
+            logger.info(f"filter unknown test cases job start. Threads number: {self.number_of_threads}.")
+            job_func = self._filter_unknown_test_cases
+
+        if job_task == "FILTER_CASE_BY_TYPE":
+            logger.info(f"filter {kwargs['case_type']} test cases job start. Threads number: {self.number_of_threads}.")
+            # logger.info("????")
+            self.used_type(kwargs['case_type'])
+            # logger.info("!!!!!")
+            job_func = self._filter_test_cases_by_type
+
+        if job_task == "FILTER_NOFILE_CASE":
+            logger.info(f"filter test cases with no file job start. Threads number: {self.number_of_threads}.")
+            job_func = self._filter_no_file_test_cases
+
+        if job_task == "COMBINE_SAME_CASE":
+            logger.info(f"combine same test cases job start. Threads number: {self.number_of_threads}.")
+            job_func = self._combine_same_test_file_case
+
+        if job_task == "FILTER_ALLFAIL_CASE":
+            logger.info(f"filter always failed test cases job start. Threads number: {self.number_of_threads}.")
+            _ = self.test_case_status_map
+            job_func = self.filter_always_failed_test_cases
+
+        if job_func is not None:
+            before = len(self.get_all_testcases())
+            res = pqdm(arguments, job_func, n_jobs=self.number_of_threads,
+                       desc="Filter test cases with unknown status", leave=False)
+            self.ci_objs = []
+            for x in res:
+                self.ci_objs.extend(x)
+            self.reorder()
+            after = len(self.get_all_testcases())
+            logger.info(f"filter {before - after} test cases, reduce test_cases from {before} to {after}")
+
+        if job_task == "FILTER_SMALL_BRANCH":
+            logger.info(
+                f"filter branches with small cases (less than{kwargs['minimal_testcases']}) job start. Threads number: {self.number_of_threads}.")
+            self.filter_branches_with_few_testcases(minimal_testcases=kwargs['minimal_testcases'])
 
 
 def load_cia(file_path) -> 'CIAnalysis':
