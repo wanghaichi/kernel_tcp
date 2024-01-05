@@ -1,3 +1,4 @@
+import json
 import pickle
 
 from pathlib import Path
@@ -12,6 +13,11 @@ from sqlalchemy import text
 
 
 if __name__ == "__main__":
+    # not_mapped_text = Path("lkft/output.txt").read_text().split("\n")
+    # for line in not_mapped_text:
+    #     if
+
+    exit(-1)
     # Create an engine and session
     engine = create_engine('sqlite:///hzy.db', echo=False)
     # conn = engine.connect()
