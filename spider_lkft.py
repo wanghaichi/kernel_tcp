@@ -4,8 +4,8 @@ from liebes.CiObjects import DBCheckout, DBBuild, DBTestRun, DBTest, Checkout
 from liebes.analysis import CIAnalysis
 
 if __name__ == "__main__":
-    sql = SQLHelper("lkft/lkft.db")
-    checkouts = sql.session.query(DBCheckout).order_by(DBCheckout.created_at.desc()).limit(100).all()
+    sql = SQLHelper("/home/wanghaichi/kernelTCP/lkft/lkft.db")
+    checkouts = sql.session.query(DBCheckout).order_by(DBCheckout.git_commit_datetime.desc()).limit(10).all()
     cia = CIAnalysis()
     for ch in checkouts:
         cia.ci_objs.append(Checkout(ch))
@@ -23,11 +23,19 @@ if __name__ == "__main__":
         print(k, v)
 
     # # ch = Checkout(first_checkout
-    # cia.set_parallel_number(10)
+    cia.set_parallel_number(10)
     # # cia.select()
     # cia.filter_job("FILTER_UNKNOWN_CASE")
-    # # cia.filter_job("FILTER_NOFILE_CASE")
-    # cia.filter_job("COMBINE_SAME_CASE")
-    # cia.filter_job("FILTER_ALLFAIL_CASE")
+    # cia.filter_job("FILTER_NOFILE_CASE")
+    cia.filter_job("COMBINE_SAME_CASE")
+    cia.filter_job("FILTER_ALLFAIL_CASE")
     # # cia.filter_job("")
+    for ch in cia.ci_objs:
+        print('=========================================== ' + ch.instance.git_sha + ' ===========================================')
+        for build in ch.builds:
+            for t in build.get_all_testcases():
+                # print(t)
+                if t.instance.status == 'fail':
+                    print(t.instance.id + '      ' + t.instance.file_path)
+
 

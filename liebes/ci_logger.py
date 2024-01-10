@@ -7,7 +7,7 @@ from dynaconf import Dynaconf
 curr_time = datetime.now().strftime('%Y-%m-%d-%H:%M:%S')
 
 settings = Dynaconf(
-    settings_files=['settings_local.toml', '.secrets.toml'],
+    settings_files=['settings.toml', '.secrets.toml'],
 )
 
 # define file logger format

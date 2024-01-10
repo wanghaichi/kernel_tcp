@@ -123,7 +123,7 @@ class CIAnalysis:
             for build in ci_obj.builds:
                 for testrun in build.testruns:
                     temp = []
-                    for test_case in build.tests:
+                    for test_case in testrun.tests:
                         if test_case.map_test():
                             temp.append(test_case)
                         # else:
@@ -176,7 +176,7 @@ class CIAnalysis:
             for build in ci_obj.builds:
                 for testrun in build.testruns:
                     temp = []
-                    for testcase in build.tests:
+                    for testcase in testrun.tests:
                         if testcase.file_path in status_m.keys():
                             status_m[testcase.file_path].merge_status(testcase)
                             continue
@@ -188,7 +188,7 @@ class CIAnalysis:
             for build in ci_obj.builds:
                 for testrun in build.testruns:
                     for i in range(len(testrun.tests)):
-                        build.tests[i].merge_status(status_m[build.tests[i].file_path])
+                        testrun.tests[i].merge_status(status_m[testrun.tests[i].file_path])
         return ci_objs
 
     def assert_all_test_file_exists(self):

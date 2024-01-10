@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import List
 
 from pqdm.threads import pqdm
-from sqlalchemy import Column, String, ForeignKey, Text, Boolean
+from sqlalchemy import Column, String, ForeignKey, Text, Boolean, Integer, DateTime
 from sqlalchemy.orm import declarative_base, relationship
 from tqdm import tqdm
 
@@ -30,9 +30,10 @@ class DBCheckout(Base):
     patch_id = Column(String(200))
     patch_url = Column(String(200))
     patch_source = Column(String(200))
+    git_commit_datetime = Column(DateTime)
 
     builds = relationship('DBBuild', back_populates='checkout',
-                          primaryjoin="and_(DBCheckout.id == DBBuild.checkout_id, DBBuild.build_name != None, DBBuild.build_name != '')")
+                          primaryjoin="and_(DBCheckout.id == DBBuild.checkout_id, DBBuild.build_name == 'gcc-13-lkftconfig-64k_page_size', DBBuild.build_name != '')")
 
     def __str__(self):
         return (
@@ -115,6 +116,7 @@ class DBTest(Base):
     environment = Column(Text)
     suite = Column(Text)
     file_path = Column(Text)
+    TP = Column(Integer)
 
     # Define relationships
     testrun = relationship('DBTestRun', back_populates='tests')
@@ -125,7 +127,8 @@ class DBTest(Base):
             f"result={self.result}, path={self.path}, build_id={self.build_id}, "
             f"build_name={self.build_name}, log_url={self.log_url}, "
             f"has_known_issues={self.has_known_issues}, known_issues={self.known_issues}, "
-            f"environment={self.environment}, suite={self.suite}, file_path={self.file_path})"
+            f"environment={self.environment}, suite={self.suite}, file_path={self.file_path}, "
+            f"TP={self.TP})"
         )
 
 
@@ -234,6 +237,7 @@ class Test:
 
     def is_pass(self):
         return self.status == 0
+        # return self.instance.status != 'fail' or self.instance.TP is None
 
     def is_unknown(self):
         return self.status == 3

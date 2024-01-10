@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-mapping_config = json.load(open('mapping_config.json', 'r'))
+mapping_config = json.load(open('/home/duyiheng/projects/kernel-tcp/mapping_config.json', 'r'))
 
 groups = [x for x in mapping_config.keys()]
 
