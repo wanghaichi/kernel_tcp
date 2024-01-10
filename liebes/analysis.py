@@ -24,7 +24,7 @@ class CIAnalysis:
         self.execution_number_per_thread = 32
 
     def reorder(self):
-        self.ci_objs = sorted(self.ci_objs, key=lambda x: x.instance.created_at)
+        self.ci_objs = sorted(self.ci_objs, key=lambda x: x.instance.git_commit_datetime)
 
     def select(self, build_config: str):
         for ci_obj in self.ci_objs:
@@ -34,6 +34,20 @@ class CIAnalysis:
     def get_all_testcases(self) -> List['Test']:
         return [test_case for ci_obj in self.ci_objs for test_case in ci_obj.get_all_testcases()]
 
+    def load_db_instances(self,  db_instances):
+        def _load_db_instances_parallel(db_instances):
+            temp = []
+            for db_instance in db_instances:
+                temp.append(Checkout(db_instance))
+            return temp
+
+        number_per_batch = int(len(db_instances) / self.number_of_threads)
+        arguments = [db_instances[i:i + number_per_batch] for i in
+                     range(0, len(db_instances), number_per_batch)]
+        res = pqdm(arguments, _load_db_instances_parallel, n_jobs=self.number_of_threads, desc="Load DB instances",
+                   leave=False)
+        for sub_obj_list in res:
+            self.ci_objs.extend(sub_obj_list)
 
     @staticmethod
     def _filter_unknown_test_cases(ci_objs):
@@ -172,8 +186,8 @@ class CIAnalysis:
     @staticmethod
     def _combine_same_test_file_case(ci_objs: List['Checkout']):
         for ci_obj in ci_objs:
-            status_m = {}
             for build in ci_obj.builds:
+                status_m = {}
                 for testrun in build.testruns:
                     temp = []
                     for testcase in testrun.tests:
@@ -189,6 +203,10 @@ class CIAnalysis:
                 for testrun in build.testruns:
                     for i in range(len(testrun.tests)):
                         testrun.tests[i].merge_status(status_m[testrun.tests[i].file_path])
+            # for build in ci_obj.builds:
+            #     for testrun in build.testruns:
+            #         for i in range(len(testrun.tests)):
+            #             testrun.tests[i].merge_status(status_m[testrun.tests[i].file_path])
         return ci_objs
 
     def assert_all_test_file_exists(self):

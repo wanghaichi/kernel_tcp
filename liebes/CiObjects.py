@@ -59,14 +59,14 @@ class DBBuild(Base):
     start_time = Column(String(200))
     download_url = Column(String(200))
 
-    checkout = relationship('DBCheckout', back_populates='builds')
-    testruns = relationship('DBTestRun', back_populates='build')
+    checkout = relationship('DBCheckout', back_populates='builds', lazy='joined')
+    testruns = relationship('DBTestRun', back_populates='build', lazy='joined')
 
     # tests = relationship('DBTest', back_populates='build')
 
     def __str__(self):
         return (
-            f"Build(uid={self.uid}, checkout_id={self.checkout_id}, plan={self.plan}, "
+            f"Build(id={self.id}, checkout_id={self.checkout_id}, plan={self.plan}, "
             f"kconfig={self.kconfig}, arch={self.arch}, build_name={self.build_name}, "
             f"status={self.status}, duration={self.duration}, start_time={self.start_time}, "
             f"download_url={self.download_url})"
@@ -88,9 +88,10 @@ class DBTestRun(Base):
 
     # Define relationships
     # checkout = relationship('Checkout', back_populates='testruns')
-    build = relationship('DBBuild', back_populates='testruns')
+    build = relationship('DBBuild', back_populates='testruns', lazy='joined')
     tests = relationship('DBTest',
                          back_populates='testrun',
+                         lazy='joined',
                          primaryjoin="and_(DBTestRun.id == DBTest.testrun_id, DBTest.file_path != None)")
 
     def __str__(self):
@@ -110,7 +111,7 @@ class DBTest(Base):
     status = Column(String(100))
     result = Column(String(100))
     path = Column(String(200))
-    log_url = Column(String(200))
+    log_url = Column(Text)
     has_known_issues = Column(Boolean)
     known_issues = Column(Text)
     environment = Column(Text)
@@ -119,7 +120,7 @@ class DBTest(Base):
     TP = Column(Integer)
 
     # Define relationships
-    testrun = relationship('DBTestRun', back_populates='tests')
+    testrun = relationship('DBTestRun', back_populates='tests', lazy='joined')
 
     def __str__(self):
         return (
@@ -142,8 +143,7 @@ class TestCaseType(Enum):
 class Checkout:
     def __init__(self, db_instance: 'DBCheckout'):
         self.instance = db_instance
-        self.builds = [Build(x) for x in
-                       tqdm(self.instance.builds, desc=f"{self.instance.id} builds")]
+        self.builds = [Build(x) for x in self.instance.builds]
 
 
     def get_all_testcases(self) -> List['Test']:

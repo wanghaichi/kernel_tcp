@@ -19,3 +19,6 @@
 [submodule "test_cases/libgpiod"]
 	path = test_cases/libgpiod
 	url = https://git.kernel.org/pub/scm/libs/libgpiod/libgpiod.git/
+[submodule "parser/tree-sitter-c"]
+	path = parser/tree-sitter-c
+	url = https://github.com/tree-sitter/tree-sitter-c.git
