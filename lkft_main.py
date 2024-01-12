@@ -43,10 +43,16 @@ def do_exp(cia: CIAnalysis, tokenizer: BaseTokenizer, ir_model: BaseModel):
         # start iteration of one test result
         # 1. first extract the faults result
         test_cases = ci_obj.get_all_testcases()
+        if len(test_cases) == 0:
+            continue
+        print(len(test_cases))
         faults_arr = []
+        always_faults_arr = []
         for i in range(len(test_cases)):
             if not test_cases[i].is_pass():
                 faults_arr.append(i)
+            if test_cases[i].status == 10:
+                always_faults_arr.append(i)
         if len(faults_arr) == 0:
             continue
         # 2. get code changes
@@ -57,6 +63,7 @@ def do_exp(cia: CIAnalysis, tokenizer: BaseTokenizer, ir_model: BaseModel):
             continue
         # 3. second obtain the sort result
         token_arr = []
+        to_remove = []
         for i in range(len(test_cases)):
             t = test_cases[i]
             if str(t.file_path) in m.keys():
@@ -67,6 +74,7 @@ def do_exp(cia: CIAnalysis, tokenizer: BaseTokenizer, ir_model: BaseModel):
                 except Exception as e:
                     print(e)
                     print(t.file_path)
+                    to_remove.append(i)
                     continue
 
                 v = " ".join(tokens)
@@ -74,6 +82,8 @@ def do_exp(cia: CIAnalysis, tokenizer: BaseTokenizer, ir_model: BaseModel):
                 token_arr.append(v)
                 m[str(t.file_path)] = v
                 json.dump(m, Path(mapping_path).open("w"))
+        for idx in to_remove:
+            del test_cases[idx]
         queries = []
         for cc in code_changes:
             tokens = tokenizer.get_tokens(cc, TestCaseType.C)
@@ -87,9 +97,19 @@ def do_exp(cia: CIAnalysis, tokenizer: BaseTokenizer, ir_model: BaseModel):
         # print(len(similarity_sum))
 
         order_arr = np.argsort(similarity_sum)[::-1]
+        # a_f = []
+        # f = []
+        # for i in range(len(order_arr)):
+        #     if order_arr[i] in always_faults_arr:
+        #         a_f.append(i)
 
+        # for i in range(len(order_arr)):
+        #     if order_arr[i] in faults_arr:
+        #         f.append(i)
+        # print(a_f)
+        # print(f)
         apfd_v = ehelper.APFD(faults_arr, order_arr)
-        print(f"model: {ir_model.name}, commit: {ci_obj.instance.git_commit_hash}, apfd: {apfd_v}")
+        print(f"model: {ir_model.name}, commit: {ci_obj.instance.git_sha}, apfd: {apfd_v}")
         apfd_res.append(apfd_v)
     print(f"model: {ir_model.name}, avg apfd: {np.average(apfd_res)}")
     return f"model: {ir_model.name}, avg apfd: {np.average(apfd_res)}"
@@ -117,15 +137,17 @@ if __name__ == '__main__':
 
     cia.set_parallel_number(10)
     # # cia.select()
-    cia.filter_job("FILTER_UNKNOWN_CASE")
+    # cia.filter_job("FILTER_UNKNOWN_CASE")
     cia.filter_job("FILTER_NOFILE_CASE")
     cia.filter_job("COMBINE_SAME_CASE")
     cia.filter_job("FILTER_ALLFAIL_CASE")
+    # cia.filter_job("FILTER_NO_C_CASE")
+    cia.filter_job("FILTER_NO_SH_CASE")
 
     tokenizers = [AstTokenizer()]
     ir_models = [
-        # Bm25Model(),
-        TfIdfModel(),
+        Bm25Model(),
+        # TfIdfModel(),
         # RandomModel(),
         # RandomModel(),
         # RandomModel(),

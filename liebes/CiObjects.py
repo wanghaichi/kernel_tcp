@@ -8,7 +8,7 @@ from sqlalchemy import Column, String, ForeignKey, Text, Boolean, Integer, DateT
 from sqlalchemy.orm import declarative_base, relationship
 from tqdm import tqdm
 
-from liebes.ci_logger import logger
+# from liebes.ci_logger import logger
 from liebes.test_path_mapping import has_mapping
 
 Base = declarative_base()
@@ -148,6 +148,8 @@ class Checkout:
 
     def get_all_testcases(self) -> List['Test']:
         return [test_case for build in self.builds for test_case in build.get_all_testcases()]
+    
+    # def combine_build(self):
 
     def filter_builds_with_less_tests(self, minimal_cases=100):
         temp = []
@@ -236,7 +238,7 @@ class Test:
         return self._type
 
     def is_pass(self):
-        return self.status == 0
+        return (self.status == 0 or self.status == 10)
         # return self.instance.status != 'fail' or self.instance.TP is None
 
     def is_unknown(self):
