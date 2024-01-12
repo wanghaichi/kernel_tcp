@@ -46,15 +46,7 @@ def do_exp(cia: CIAnalysis, tokenizer: BaseTokenizer, ir_model: BaseModel):
         if len(test_cases) == 0:
             continue
         print(len(test_cases))
-        faults_arr = []
-        always_faults_arr = []
-        for i in range(len(test_cases)):
-            if not test_cases[i].is_pass():
-                faults_arr.append(i)
-            if test_cases[i].status == 10:
-                always_faults_arr.append(i)
-        if len(faults_arr) == 0:
-            continue
+        
         # 2. get code changes
         code_changes = gitHelper.get_diff_contents(last_ci_obj.instance.git_sha
                                                    , ci_obj.instance.git_sha)
@@ -84,6 +76,17 @@ def do_exp(cia: CIAnalysis, tokenizer: BaseTokenizer, ir_model: BaseModel):
                 json.dump(m, Path(mapping_path).open("w"))
         for idx in to_remove:
             del test_cases[idx]
+
+        faults_arr = []
+        always_faults_arr = []
+        for i in range(len(test_cases)):
+            if not test_cases[i].is_pass():
+                faults_arr.append(i)
+            if test_cases[i].status == 10:
+                always_faults_arr.append(i)
+        if len(faults_arr) == 0:
+            continue
+    
         queries = []
         for cc in code_changes:
             tokens = tokenizer.get_tokens(cc, TestCaseType.C)
