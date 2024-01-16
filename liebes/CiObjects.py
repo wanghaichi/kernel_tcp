@@ -212,6 +212,9 @@ class Test:
             self.status = 2
         else:
             self.status = 3
+        # filter TP case
+        if self.is_failed() and self.instance.TP == 1:
+            self.status = 0
 
     def __str__(self):
         return str(self.instance)
