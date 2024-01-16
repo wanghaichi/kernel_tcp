@@ -45,7 +45,6 @@ def do_exp(cia: CIAnalysis, tokenizer: BaseTokenizer, ir_model: BaseModel):
         test_cases = ci_obj.get_all_testcases()
         if len(test_cases) == 0:
             continue
-        print(len(test_cases))
         
         # 2. get code changes
         code_changes = gitHelper.get_diff_contents(last_ci_obj.instance.git_sha
@@ -64,8 +63,8 @@ def do_exp(cia: CIAnalysis, tokenizer: BaseTokenizer, ir_model: BaseModel):
                 try:
                     tokens = tokenizer.get_tokens(Path(t.file_path).read_text(), t.type)
                 except Exception as e:
-                    print(e)
-                    print(t.file_path)
+                    # print(e)
+                    # print(t.file_path)
                     to_remove.append(i)
                     continue
 
@@ -77,15 +76,18 @@ def do_exp(cia: CIAnalysis, tokenizer: BaseTokenizer, ir_model: BaseModel):
         for idx in to_remove:
             del test_cases[idx]
 
+        print(len(test_cases))
         faults_arr = []
-        always_faults_arr = []
+        # always_faults_arr = []
         for i in range(len(test_cases)):
             if not test_cases[i].is_pass():
                 faults_arr.append(i)
-            if test_cases[i].status == 10:
-                always_faults_arr.append(i)
+            # if test_cases[i].status == 10:
+            #     always_faults_arr.append(i)
         if len(faults_arr) == 0:
             continue
+
+        print(len(faults_arr))
     
         queries = []
         for cc in code_changes:
@@ -94,23 +96,23 @@ def do_exp(cia: CIAnalysis, tokenizer: BaseTokenizer, ir_model: BaseModel):
         # print(f"corpus: {len(token_arr)}, queries: {len(queries)}")
         s = ir_model.get_similarity(token_arr, queries)
 
-        print(s.shape)
+        # print(s.shape)
         similarity_sum = np.sum(s, axis=1)
         # print(similarity_sum)
         # print(len(similarity_sum))
 
         order_arr = np.argsort(similarity_sum)[::-1]
-        # a_f = []
-        # f = []
-        # for i in range(len(order_arr)):
-        #     if order_arr[i] in always_faults_arr:
-        #         a_f.append(i)
+        
+        # for token_idx in order_arr:
+        #     case_content = token_arr[token_idx].split(' ')
+        #     word_dict = {}
+        #     for q in queries:
+        #         q_content = q.split(' ')
+        #         for q_word in q_content:
+        #             if q_word in case_content:
+        #                 word_dict[q_word] = word_dict.get(q_word, 0) + 1
+        #     print(word_dict)
 
-        # for i in range(len(order_arr)):
-        #     if order_arr[i] in faults_arr:
-        #         f.append(i)
-        # print(a_f)
-        # print(f)
         apfd_v = ehelper.APFD(faults_arr, order_arr)
         print(f"model: {ir_model.name}, commit: {ci_obj.instance.git_sha}, apfd: {apfd_v}")
         apfd_res.append(apfd_v)
@@ -121,7 +123,7 @@ def do_exp(cia: CIAnalysis, tokenizer: BaseTokenizer, ir_model: BaseModel):
 if __name__ == '__main__':
     linux_path = '/home/wanghaichi/linux-1'
     sql = SQLHelper("/home/wanghaichi/kernelTCP/lkft/lkft.db")
-    checkouts = sql.session.query(DBCheckout).order_by(DBCheckout.git_commit_datetime.desc()).limit(10).all()
+    checkouts = sql.session.query(DBCheckout).order_by(DBCheckout.git_commit_datetime.desc()).limit(100).all()
     cia = CIAnalysis()
     for ch in checkouts:
         cia.ci_objs.append(Checkout(ch))
@@ -143,9 +145,11 @@ if __name__ == '__main__':
     # cia.filter_job("FILTER_UNKNOWN_CASE")
     cia.filter_job("FILTER_NOFILE_CASE")
     cia.filter_job("COMBINE_SAME_CASE")
-    cia.filter_job("FILTER_ALLFAIL_CASE")
+    # cia.filter_job("FILTER_ALLFAIL_CASE")
     # cia.filter_job("FILTER_NO_C_CASE")
     cia.filter_job("FILTER_NO_SH_CASE")
+    cia.filter_job("FILTER_FAIL_CASES_IN_LAST_VERSION")
+
 
     tokenizers = [AstTokenizer()]
     ir_models = [

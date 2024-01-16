@@ -1,8 +1,9 @@
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-from gensim import corpora, models, similarities
+# from gensim import corpora, models, similarities
 import numpy as np
 from collections import Counter
+import re
 
 
 class BaseModel:
@@ -64,7 +65,7 @@ class Bm25Model(BaseModel):
         self.b = b
 
     def init(self, corpus):
-        corpus = [doc.split(' ') for doc in corpus]
+        corpus = [re.findall(r'\b\w+\b', doc) for doc in corpus]
         self.corpus = corpus
         self.doc_num = len(corpus)
         self.avg_doc_len = sum([len(doc) for doc in corpus]) / self.doc_num
@@ -103,7 +104,7 @@ class Bm25Model(BaseModel):
     def get_similarity(self, corpus, queries):
 
         self.init(corpus)
-        tokenized_query = [doc.split(' ') for doc in queries]
+        tokenized_query = [re.findall(r'\b\w+\b', doc) for doc in queries]
         similarity_matrix = []
         for q in tokenized_query:
             similarity_matrix.append(self.get_doc_score(q))
@@ -111,38 +112,38 @@ class Bm25Model(BaseModel):
         return np.transpose(np.array(similarity_matrix))
 
 
-class LSIModel(BaseModel):
-    def __init__(self, num_topics=2):
-        super().__init__(name=f"LSIModel-topic-{num_topics}")
-        self.num_topics = num_topics
+# class LSIModel(BaseModel):
+#     def __init__(self, num_topics=2):
+#         super().__init__(name=f"LSIModel-topic-{num_topics}")
+#         self.num_topics = num_topics
 
-    def get_similarity(self, corpus, queries):
-        tokenized_corpus = [doc.split(' ') for doc in np.concatenate((np.array(corpus), np.array(queries)))]
-        dictionary = corpora.Dictionary(tokenized_corpus)
+#     def get_similarity(self, corpus, queries):
+#         tokenized_corpus = [doc.split(' ') for doc in np.concatenate((np.array(corpus), np.array(queries)))]
+#         dictionary = corpora.Dictionary(tokenized_corpus)
 
-        doc_term_matrix = [dictionary.doc2bow(tokens) for tokens in tokenized_corpus]
+#         doc_term_matrix = [dictionary.doc2bow(tokens) for tokens in tokenized_corpus]
 
-        lsi_model = models.LsiModel(doc_term_matrix, id2word=dictionary, num_topics=self.num_topics)
-        similarity_matrix = np.array(similarities.MatrixSimilarity(lsi_model[doc_term_matrix]))
+#         lsi_model = models.LsiModel(doc_term_matrix, id2word=dictionary, num_topics=self.num_topics)
+#         similarity_matrix = np.array(similarities.MatrixSimilarity(lsi_model[doc_term_matrix]))
 
-        return similarity_matrix[0: len(corpus), len(corpus):]
+#         return similarity_matrix[0: len(corpus), len(corpus):]
 
 
-class LDAModel(BaseModel):
-    def __init__(self, num_topics=2):
-        super().__init__(name=f"LDAModel-topic-{num_topics}")
-        self.num_topics = num_topics
+# class LDAModel(BaseModel):
+#     def __init__(self, num_topics=2):
+#         super().__init__(name=f"LDAModel-topic-{num_topics}")
+#         self.num_topics = num_topics
 
-    def get_similarity(self, corpus, queries):
-        tokenized_corpus = [doc.split(' ') for doc in np.concatenate((np.array(corpus), np.array(queries)))]
-        dictionary = corpora.Dictionary(tokenized_corpus)
+#     def get_similarity(self, corpus, queries):
+#         tokenized_corpus = [doc.split(' ') for doc in np.concatenate((np.array(corpus), np.array(queries)))]
+#         dictionary = corpora.Dictionary(tokenized_corpus)
 
-        doc_term_matrix = [dictionary.doc2bow(tokens) for tokens in tokenized_corpus]
+#         doc_term_matrix = [dictionary.doc2bow(tokens) for tokens in tokenized_corpus]
 
-        lsi_model = models.LdaModel(doc_term_matrix, id2word=dictionary, num_topics=self.num_topics)
-        similarity_matrix = np.array(similarities.MatrixSimilarity(lsi_model[doc_term_matrix]))
+#         lsi_model = models.LdaModel(doc_term_matrix, id2word=dictionary, num_topics=self.num_topics)
+#         similarity_matrix = np.array(similarities.MatrixSimilarity(lsi_model[doc_term_matrix]))
 
-        return similarity_matrix[0: len(corpus), len(corpus):]
+#         return similarity_matrix[0: len(corpus), len(corpus):]
 
 
 class RandomModel(BaseModel):

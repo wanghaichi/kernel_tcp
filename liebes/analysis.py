@@ -6,6 +6,7 @@ from pqdm.threads import pqdm
 from tqdm import tqdm
 
 from liebes.CiObjects import Checkout, Test, TestCaseType
+from collections import defaultdict
 # from liebes.ci_logger import logger
 
 
@@ -157,6 +158,32 @@ class CIAnalysis:
                             temp.append(test_case)
                     testrun.tests = temp
         return ci_objs
+    
+    @staticmethod
+    def _filter_fail_cases_in_last_version(ci_objs):
+        
+        fail_case_dict_list = []
+        for ci_obj in ci_objs:
+            fail_cases_dict = defaultdict(list)
+            for build in ci_obj.builds:
+                fail_case_in_last_version = {}
+                if len(fail_case_dict_list) > 0:
+                    fail_case_in_last_version = fail_case_dict_list[-1]
+                
+                for testrun in build.testruns:
+                    temp = []
+                    for test_case in testrun.tests:
+                        if test_case.status == 1:
+                            fail_cases_dict[build.instance.build_name].append(test_case.file_path)
+                            if test_case.file_path not in fail_case_in_last_version.get(build.instance.build_name, []):
+                                temp.append(test_case)
+                        else:
+                            temp.append(test_case)
+                    testrun.tests = temp
+            fail_case_dict_list.append(fail_cases_dict)
+        
+        return ci_objs
+
 
     @staticmethod
     def _filter_no_file_test_cases(ci_objs):
@@ -290,12 +317,14 @@ class CIAnalysis:
         if job_task == "FILTER_NO_SH_CASE":
             job_func = self._filter_no_sh_cases
 
+        if job_task == "FILTER_FAIL_CASES_IN_LAST_VERSION":
+            job_func = self._filter_fail_cases_in_last_version
+
         if job_func is not None:
             before = len(self.get_all_testcases())
             res = pqdm(arguments, job_func, n_jobs=self.number_of_threads,
                        desc="Filter test cases with unknown status", leave=False)
             self.ci_objs = []
-            print(res)
             for x in res:
                 self.ci_objs.extend(x)
             self.reorder()
