@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import List
+import copy
 
 
 class CallGraph:
@@ -18,7 +19,7 @@ class CallGraph:
             func_name = func_meta[0]
             if func_meta[1].startswith("Origin File: "):
                 file_meta = func_meta[1].replace("Origin File: ", "").split(": ")
-                file_name = file_meta[0]
+                file_name = file_meta[0].removeprefix("./")
                 file_number = file_meta[1]
                 callers = [x.strip() for x in func_meta[3:]]
             else:
@@ -45,15 +46,20 @@ class CallGraph:
     if no match, return all candidates that match func_name
     '''
 
-    def get_node(self, func_name, file_path) -> (bool, List['GraphNode'] or 'GraphNode'):
+    def get_node(self, func_name, file_path, func_scope=None) -> 'GraphNode':
         candidates = []
         for k, v in self.node_map.items():
-            if func_name == k.split(".")[0]:
+            if func_name == k.split(".")[0] and v.file_path == file_path:
                 candidates.append(v)
-        for c in candidates:
-            if c.file_path == file_path:
-                return True, c
-        return False, candidates
+        if func_scope[0] is None:
+            return candidates
+        n = 100000000
+        res = None
+        for candidate in candidates:
+            if abs(candidate.start_line - func_scope[0]) < n:
+                n = abs(candidate.start_line - func_scope[0])
+                res = candidate
+        return res
 
     def insert_or_update(self, node: 'GraphNode'):
         self.node_map[node.function_name] = node
@@ -90,6 +96,47 @@ class CallGraph:
         call_list.append(node)
         for caller in set(node.caller):
             self.dfs(call_list, caller)
+
+    def get_context(self, node: 'GraphNode', depth=1):
+
+        pre_context = self.forward_step(node, depth)
+        post_context = self.backward_step(node, depth)
+        return (pre_context, post_context)
+
+    def forward_step(self, node: 'GraphNode', depth):
+        if depth <= 0:
+            return []
+        forward_res = []
+        def _dfs_step(node, res, target_depth):
+            if target_depth == len(res):
+                forward_res.append(copy.copy(res))
+                return
+            for caller in node.caller:
+                if caller in res:
+                    continue
+                res.append(caller)
+                _dfs_step(caller, res, target_depth)
+                del res[-1]
+        _dfs_step(node, [], depth)
+        return forward_res
+
+    def backward_step(self, node: 'GraphNode', depth):
+        if depth <= 0:
+            return []
+        callee_res = []
+
+        def _dfs_step(node, res, target_depth):
+            if target_depth == len(res):
+                callee_res.append(copy.copy(res))
+                return
+            for callee in node.callee:
+                if callee in res:
+                    continue
+                res.append(callee)
+                _dfs_step(callee, res, target_depth)
+                del res[-1]
+        _dfs_step(node, [], depth)
+        return callee_res
 
     def print_graph(self):
         for k, v in self.node_map.items():

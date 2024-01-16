@@ -37,10 +37,12 @@ class GitHelper:
             "M",
         ]
         diff_content = []
+        file_list = []
 
         for diff_obj in diff.iter_change_type("A"):
             try:
                 diff_content.append(diff_obj.b_blob.data_stream.read().decode('utf-8'))
+                file_list.append(diff_obj.b_path)
             except Exception as e:
                 pass
             pass
@@ -48,6 +50,7 @@ class GitHelper:
         for diff_obj in diff.iter_change_type("D"):
             try:
                 diff_content.append(diff_obj.a_blob.data_stream.read().decode('utf-8'))
+                file_list.append(diff_obj.a_path)
             except Exception as e:
                 pass
             pass
@@ -55,6 +58,7 @@ class GitHelper:
         for diff_obj in diff.iter_change_type("R"):
             try:
                 diff_content.append(diff_obj.b_blob.data_stream.read().decode('utf-8'))
+                file_list.append(diff_obj.b_path)
             except Exception as e:
                 pass
             pass
@@ -69,16 +73,29 @@ class GitHelper:
                     b_lines = diff_obj.b_blob.data_stream.read().decode('utf-8').split('\n')
                     diff_lines = difflib.ndiff(a_lines, b_lines)
                     temp = []
+                    original_line_number = 0
+                    modified_line_number = 0
+
                     for line in diff_lines:
-                        if line.startswith("+") or line.startswith("-"):
-                            line = line.removeprefix("+").removeprefix("-").strip()
-                            temp.append(line)
-                    diff_content.append("\n".join(temp))
+                        if line.startswith("-"):
+                            # line = line.removeprefix("-").strip()
+                            original_line_number += 1
+                            temp.append((original_line_number, modified_line_number, line))
+                        elif line.startswith("+"):
+                            # line = line.removeprefix("+").strip()
+                            modified_line_number += 1
+                            temp.append((original_line_number, modified_line_number, line))
+                        else:
+                            original_line_number += 1
+                            modified_line_number += 1
+
+                    diff_content.append(temp)
+                    file_list.append(diff_obj.b_path)
                 except Exception as e:
                     print(f"{commit}, {to_commit} error happened! need check!")
             pass
 
-        return diff_content
+        return diff_content, file_list
 
     def diff(self, commit, to_commit):
         commit_obj_a = self.repo.commit(commit)
