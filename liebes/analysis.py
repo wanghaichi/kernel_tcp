@@ -6,7 +6,7 @@ from pqdm.threads import pqdm
 from tqdm import tqdm
 
 from liebes.CiObjects import Checkout, Test, TestCaseType
-from liebes.ci_logger import logger
+# from liebes.ci_logger import logger
 
 
 class CIAnalysis:
@@ -73,7 +73,10 @@ class CIAnalysis:
                         # TODO filter has known issues test cases
                         if test_case.instance.has_known_issues == "1":
                             continue
+                            # test_case.status = 0
+
                         if self.test_case_status_map[test_case.instance.path]:
+                            # test_case.status = 0
                             temp.append(test_case)
                     testrun.tests = temp
 
@@ -132,13 +135,37 @@ class CIAnalysis:
         print(f"On total: C: {total_c}, SH: {total_sh}, PY: {total_py}")
 
     @staticmethod
+    def _filter_no_c_cases(ci_objs):
+        for ci_obj in ci_objs:
+            for build in ci_obj.builds:
+                for testrun in build.testruns:
+                    temp = []
+                    for test_case in testrun.tests:
+                        if test_case.file_path.endswith(r'.c'):
+                            temp.append(test_case)
+                    testrun.tests = temp
+        return ci_objs
+    
+    @staticmethod
+    def _filter_no_sh_cases(ci_objs):
+        for ci_obj in ci_objs:
+            for build in ci_obj.builds:
+                for testrun in build.testruns:
+                    temp = []
+                    for test_case in testrun.tests:
+                        if test_case.file_path.endswith(r'.sh'):
+                            temp.append(test_case)
+                    testrun.tests = temp
+        return ci_objs
+
+    @staticmethod
     def _filter_no_file_test_cases(ci_objs):
         for ci_obj in ci_objs:
             for build in ci_obj.builds:
                 for testrun in build.testruns:
                     temp = []
-                    for test_case in build.tests:
-                        if test_case.map_test():
+                    for test_case in testrun.tests:
+                        if test_case.map_test() and Path(test_case.file_path).exists():
                             temp.append(test_case)
                         # else:
                         #     if "login" in test_case.test_path or "speculative" in test_case.test_path:
@@ -198,7 +225,7 @@ class CIAnalysis:
                         temp.append(testcase)
                     testrun.tests = temp
 
-            # update status
+            # update statusA
             # for build in ci_obj.builds:
             #     for testrun in build.testruns:
             #         for i in range(len(testrun.tests)):
@@ -234,43 +261,50 @@ class CIAnalysis:
                      range(0, len(self.ci_objs), self.execution_number_per_thread)]
         job_func = None
         if job_task == "FILTER_UNKNOWN_CASE":
-            logger.info(f"filter unknown test cases job start. Threads number: {self.number_of_threads}.")
+            # logger.info(f"filter unknown test cases job start. Threads number: {self.number_of_threads}.")
             job_func = self._filter_unknown_test_cases
 
         if job_task == "FILTER_CASE_BY_TYPE":
-            logger.info(f"filter {kwargs['case_type']} test cases job start. Threads number: {self.number_of_threads}.")
+            # logger.info(f"filter {kwargs['case_type']} test cases job start. Threads number: {self.number_of_threads}.")
             # logger.info("????")
             self.used_type(kwargs['case_type'])
             # logger.info("!!!!!")
             job_func = self._filter_test_cases_by_type
 
         if job_task == "FILTER_NOFILE_CASE":
-            logger.info(f"filter test cases with no file job start. Threads number: {self.number_of_threads}.")
+            # logger.info(f"filter test cases with no file job start. Threads number: {self.number_of_threads}.")
             job_func = self._filter_no_file_test_cases
 
         if job_task == "COMBINE_SAME_CASE":
-            logger.info(f"combine same test cases job start. Threads number: {self.number_of_threads}.")
+            # logger.info(f"combine same test cases job start. Threads number: {self.number_of_threads}.")
             job_func = self._combine_same_test_file_case
 
         if job_task == "FILTER_ALLFAIL_CASE":
-            logger.info(f"filter always failed test cases job start. Threads number: {self.number_of_threads}.")
+            # logger.info(f"filter always failed test cases job start. Threads number: {self.number_of_threads}.")
             _ = self.test_case_status_map
             job_func = self.filter_always_failed_test_cases
+
+        if job_task == "FILTER_NO_C_CASE":
+            job_func = self._filter_no_c_cases
+
+        if job_task == "FILTER_NO_SH_CASE":
+            job_func = self._filter_no_sh_cases
 
         if job_func is not None:
             before = len(self.get_all_testcases())
             res = pqdm(arguments, job_func, n_jobs=self.number_of_threads,
                        desc="Filter test cases with unknown status", leave=False)
             self.ci_objs = []
+            print(res)
             for x in res:
                 self.ci_objs.extend(x)
             self.reorder()
             after = len(self.get_all_testcases())
-            logger.info(f"filter {before - after} test cases, reduce test_cases from {before} to {after}")
+            # logger.info(f"filter {before - after} test cases, reduce test_cases from {before} to {after}")
 
         if job_task == "FILTER_SMALL_BRANCH":
-            logger.info(
-                f"filter branches with small cases (less than{kwargs['minimal_testcases']}) job start. Threads number: {self.number_of_threads}.")
+            # logger.info(
+                # f"filter branches with small cases (less than{kwargs['minimal_testcases']}) job start. Threads number: {self.number_of_threads}.")
             self.filter_branches_with_few_testcases(minimal_testcases=kwargs['minimal_testcases'])
 
 
