@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import List
 
 from pqdm.threads import pqdm
-from sqlalchemy import Column, String, ForeignKey, Text, Boolean, DateTime
+from sqlalchemy import Column, String, ForeignKey, Text, Boolean, DateTime, Integer
 from sqlalchemy.orm import declarative_base, relationship
 from tqdm import tqdm
 
@@ -117,6 +117,7 @@ class DBTest(Base):
     environment = Column(Text)
     suite = Column(Text)
     file_path = Column(Text)
+    TP = Column(Integer)
 
     # Define relationships
     testrun = relationship('DBTestRun', back_populates='tests', lazy='joined')
@@ -208,6 +209,9 @@ class Test:
             self.status = 2
         else:
             self.status = 3
+        # filter TP case
+        if self.is_failed() and self.instance.TP == 1:
+            self.status = 0
 
     def __str__(self):
         return str(self.instance)
