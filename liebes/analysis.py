@@ -7,7 +7,7 @@ from tqdm import tqdm
 
 from liebes.CiObjects import Checkout, Test, TestCaseType
 from collections import defaultdict
-# from liebes.ci_logger import logger
+from liebes.ci_logger import logger
 
 
 class CIAnalysis:
@@ -103,7 +103,7 @@ class CIAnalysis:
     #     self.ci_objs = temp_obj
     #     after = len(self.get_all_testcases())
     #     after_branch = len(self.ci_objs)
-    #     print(f"filter {before_branch - after_branch} branches, reduce test_cases from {before} to {after}")
+    #     logger.debug(f"filter {before_branch - after_branch} branches, reduce test_cases from {before} to {after}")
 
     def statistic_data(self):
         self.reorder()
@@ -121,7 +121,7 @@ class CIAnalysis:
             sh_count = len([x for x in test_cases if x.type == TestCaseType.SH])
             py_count = len([x for x in test_cases if x.type == TestCaseType.PY])
 
-            print(
+            logger.info(
                 f"{ci_obj.instance.git_repo_branch}: {l1} / {len(test_cases)} failed. Unique test path count: {len(path_set)}. "
                 f"Unique file path count: {len(file_set)}. "
                 f"C: {c_count}, SH: {sh_count}, PY: {py_count}")
@@ -132,8 +132,8 @@ class CIAnalysis:
         test_cases = self.get_all_testcases()
         for t in test_cases:
             file_set.add(t.file_path)
-        print(f"Unique file count: {len(file_set)}")
-        print(f"On total: C: {total_c}, SH: {total_sh}, PY: {total_py}")
+        logger.info(f"Unique file count: {len(file_set)}")
+        logger.info(f"On total: C: {total_c}, SH: {total_sh}, PY: {total_py}")
 
     @staticmethod
     def _filter_no_c_cases(ci_objs):
@@ -235,7 +235,7 @@ class CIAnalysis:
         self.ci_objs = temp_obj
         after = len(self.get_all_testcases())
         after_branch = len(self.ci_objs)
-        print(f"filter {before_branch - after_branch} branches, reduce test_cases from {before} to {after}")
+        logger.debug(f"filter {before_branch - after_branch} branches, reduce test_cases from {before} to {after}")
 
     @staticmethod
     def _combine_same_test_file_case(ci_objs: List['Checkout']):
@@ -263,7 +263,7 @@ class CIAnalysis:
         flag = True
         for t in self.get_all_testcases():
             if not Path(t.file_path).exists():
-                print(f"{t.instance.path}: {t.file_path} not exists!")
+                logger.debug(f"{t.instance.path}: {t.file_path} not exists!")
                 flag = False
         if not flag:
             exit("failed to pass assertion, solve the above file inconsistency")
@@ -281,33 +281,31 @@ class CIAnalysis:
                      range(0, len(self.ci_objs), number_of_per_task)]
         res = pqdm(arguments, _map_file_path_parallel, n_jobs=self.number_of_threads,
                    desc="map files", leave=False)
-        print("done")
+        logger.debug("done")
 
     def filter_job(self, job_task: str, *args, **kwargs):
         arguments = [self.ci_objs[i:i + self.execution_number_per_thread] for i in
                      range(0, len(self.ci_objs), self.execution_number_per_thread)]
         job_func = None
         if job_task == "FILTER_UNKNOWN_CASE":
-            # logger.info(f"filter unknown test cases job start. Threads number: {self.number_of_threads}.")
+            logger.debug(f"filter unknown test cases job start. Threads number: {self.number_of_threads}.")
             job_func = self._filter_unknown_test_cases
 
         if job_task == "FILTER_CASE_BY_TYPE":
-            # logger.info(f"filter {kwargs['case_type']} test cases job start. Threads number: {self.number_of_threads}.")
-            # logger.info("????")
+            logger.debug(f"filter {kwargs['case_type']} test cases job start. Threads number: {self.number_of_threads}.")
             self.used_type(kwargs['case_type'])
-            # logger.info("!!!!!")
             job_func = self._filter_test_cases_by_type
 
         if job_task == "FILTER_NOFILE_CASE":
-            # logger.info(f"filter test cases with no file job start. Threads number: {self.number_of_threads}.")
+            logger.debug(f"filter test cases with no file job start. Threads number: {self.number_of_threads}.")
             job_func = self._filter_no_file_test_cases
 
         if job_task == "COMBINE_SAME_CASE":
-            # logger.info(f"combine same test cases job start. Threads number: {self.number_of_threads}.")
+            logger.debug(f"combine same test cases job start. Threads number: {self.number_of_threads}.")
             job_func = self._combine_same_test_file_case
 
         if job_task == "FILTER_ALLFAIL_CASE":
-            # logger.info(f"filter always failed test cases job start. Threads number: {self.number_of_threads}.")
+            logger.debug(f"filter always failed test cases job start. Threads number: {self.number_of_threads}.")
             _ = self.test_case_status_map
             job_func = self.filter_always_failed_test_cases
 
@@ -329,11 +327,11 @@ class CIAnalysis:
                 self.ci_objs.extend(x)
             self.reorder()
             after = len(self.get_all_testcases())
-            # logger.info(f"filter {before - after} test cases, reduce test_cases from {before} to {after}")
+            logger.debug(f"filter {before - after} test cases, reduce test_cases from {before} to {after}")
 
         if job_task == "FILTER_SMALL_BRANCH":
-            # logger.info(
-                # f"filter branches with small cases (less than{kwargs['minimal_testcases']}) job start. Threads number: {self.number_of_threads}.")
+            logger.debug(
+                f"filter branches with small cases (less than{kwargs['minimal_testcases']}) job start. Threads number: {self.number_of_threads}.")
             self.filter_branches_with_few_testcases(minimal_testcases=kwargs['minimal_testcases'])
 
 

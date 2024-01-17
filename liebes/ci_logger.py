@@ -2,13 +2,9 @@ import logging
 import os
 from datetime import datetime
 
-from dynaconf import Dynaconf
+from config import settings
 
 curr_time = datetime.now().strftime('%Y-%m-%d-%H:%M:%S')
-
-settings = Dynaconf(
-    settings_files=['settings.toml', '.secrets.toml'],
-)
 
 # define file logger format
 logging.basicConfig(
