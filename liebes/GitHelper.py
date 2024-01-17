@@ -126,7 +126,6 @@ class GitHelper:
             root_node = self.ast_parser.parse(c_code_snippet)
             scopes = self.ast_parser.get_functions_scope(root_node)
             scopes.sort(key=lambda x: x[1][0])
-
             diff_list = []
             prev_idx = 0
             for idx in range(1, len(diff)):

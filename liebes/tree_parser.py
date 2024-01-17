@@ -32,24 +32,26 @@ class CodeAstParser:
         return fun_names
 
     def get_call_function_names(self, node: Node):
-        def _visit(node):
-            res = []
-            if node.type == "call_expression":
-                for ch in node.children:
+        stack = [node]
+        res = []
+        while len(stack) > 0:
+            cur_node = stack.pop()
+            if cur_node.type == "call_expression":
+                for ch in cur_node.children:
                     if ch.type == "identifier":
                         res.append(ch.text)
-            for child in node.children:
-                res.extend(_visit(child))
-            return res
-
-        return _visit(node)
+            for child in cur_node.children:
+                stack.append(child)
+        return res
 
     def get_functions_scope(self, node: Node):
-        def _visit(node):
-            res = []
-            if node.type == "function_declarator":
-                function_name = node.children[0].text.decode("utf-8", errors="ignore")
-                fa = node
+        stack = [node]
+        res = []
+        while len(stack) > 0:
+            cur_node = stack.pop()
+            if cur_node.type == "function_declarator":
+                function_name = cur_node.children[0].text.decode("utf-8", errors="ignore")
+                fa = cur_node
                 while fa is not None and fa.type != "function_definition":
                     fa = fa.parent
                 if fa is None:
@@ -58,11 +60,9 @@ class CodeAstParser:
                 function_scope = (fa.range.start_point[0], fa.range.end_point[0])
                 res.append((function_name, function_scope))
             else:
-                for ch in node.children:
-                    res.extend(_visit(ch))
-            return res
-
-        return _visit(node)
+                for ch in cur_node.children:
+                    stack.append(ch)
+        return res
 
     def parse(self, code_snippet):
         tree = self.c_parser.parse(bytes(code_snippet, "utf8"))
@@ -71,12 +71,13 @@ class CodeAstParser:
 
     def get_function_body(self, node, function_name, start_line):
         candidates = []
-
-        def _visit(node):
-            if node.type == "function_declarator":
-                fn = node.children[0].text.decode("utf-8", errors="ignore")
+        stack = [node]
+        while len(stack) > 0:
+            cur_node = stack.pop()
+            if cur_node.type == "function_declarator":
+                fn = cur_node.children[0].text.decode("utf-8", errors="ignore")
                 if fn == function_name:
-                    fa = node
+                    fa = cur_node
                     while fa is not None and fa.type != "function_definition":
                         fa = fa.parent
                     if fa is None:
@@ -85,10 +86,8 @@ class CodeAstParser:
                     function_scope = (fa.range.start_point[0], fa.range.end_point[0])
                     candidates.append((fa, function_scope))
             else:
-                for ch in node.children:
-                    _visit(ch)
-
-        _visit(node)
+                for ch in cur_node.children:
+                    stack.append(ch)
         relavence = 10000000
         res = None
         for c in candidates:

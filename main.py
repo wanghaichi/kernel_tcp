@@ -96,7 +96,7 @@ if __name__ == '__main__':
     linux_path = '/home/wanghaichi/linux-1'
     sql = SQLHelper()
     start_time = datetime.now()
-    checkouts = sql.session.query(DBCheckout).order_by(DBCheckout.git_commit_datetime.desc()).limit(21).all()
+    checkouts = sql.session.query(DBCheckout).order_by(DBCheckout.git_commit_datetime.desc()).limit(101).all()
     cia = CIAnalysis()
     for ch in checkouts:
         cia.ci_objs.append(Checkout(ch))
@@ -125,4 +125,4 @@ if __name__ == '__main__':
     logger.info("summary :---------------------------------")
     logger.info(f"use strategy: {context_strategy}")
     for s in summary:
-        print(s)
+        logger.info(s)
