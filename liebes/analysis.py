@@ -7,7 +7,7 @@ from tqdm import tqdm
 
 from liebes.CiObjects import Checkout, Test, TestCaseType
 from collections import defaultdict
-# from liebes.ci_logger import logger
+from liebes.ci_logger import logger
 
 
 class CIAnalysis:
