@@ -1,14 +1,12 @@
+import shlex
 from typing import List
 
-from clang.cindex import Index, TranslationUnit  # 主要API
 from clang.cindex import Config  # 配置
-from clang.cindex import CursorKind  # 索引结点的类别
-from clang.cindex import TypeKind  # 节点的语义类别
+from clang.cindex import Index, TranslationUnit  # 主要API
 from clang.cindex import TokenKind  # 节点的语义类别
-from pathlib import Path
-import shlex
 
 from liebes.CiObjects import TestCaseType
+from liebes.ci_logger import logger
 
 
 class BaseTokenizer:
@@ -47,7 +45,7 @@ class AstTokenizer(BaseTokenizer):
                     tokens.append(token.spelling.lower())
             return tokens
         except Exception as e:
-            print(f"tokenizer failed, ignore")
+            logger.error(f"tokenizer failed with {e}, ignore")
             pass
         return []
 

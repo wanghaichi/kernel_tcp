@@ -20,7 +20,7 @@ class CallGraph:
             if func_meta[1].startswith("Origin File: "):
                 file_meta = func_meta[1].replace("Origin File: ", "").split(": ")
                 file_name = file_meta[0].removeprefix("./")
-                file_number = file_meta[1]
+                file_number = int(file_meta[1])
                 callers = [x.strip() for x in func_meta[3:]]
             else:
                 file_name = None

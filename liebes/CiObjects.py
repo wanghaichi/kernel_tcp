@@ -33,7 +33,7 @@ class DBCheckout(Base):
     git_commit_datetime = Column(DateTime)
 
     builds = relationship('DBBuild', back_populates='checkout',
-                          primaryjoin="and_(DBCheckout.id == DBBuild.checkout_id, DBBuild.build_name =='clang-17-lkftconfig-compat', DBBuild.build_name != '')")
+                          primaryjoin="and_(DBCheckout.id == DBBuild.checkout_id, DBBuild.build_name =='clang-17-lkftconfig-compat', DBBuild.arch == 'x86_64', DBBuild.build_name != '')")
 
     def __str__(self):
         return (

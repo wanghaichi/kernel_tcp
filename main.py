@@ -1,15 +1,13 @@
 import json
-import os
-import time
-
-import numpy as np
+from datetime import datetime
 
 from liebes.CiObjects import *
 from liebes.EHelper import EHelper
 from liebes.GitHelper import GitHelper
-from liebes.tokenizer import *
+from liebes.analysis import CIAnalysis
 from liebes.ir_model import *
-from datetime import datetime
+from liebes.sql_helper import SQLHelper
+from liebes.tokenizer import *
 
 
 class TestCaseInfo:
@@ -22,7 +20,7 @@ def update_token_mapping(m, mapping_path):
     json.dump(m, Path(mapping_path).open("w"))
 
 
-def do_exp(cia: CIAnalysis, tokenizer: BaseTokenizer, ir_model: BaseModel):
+def do_exp(cia: CIAnalysis, tokenizer: BaseTokenizer, ir_model: BaseModel, context_strategy=""):
     ehelper = EHelper()
     gitHelper = GitHelper(linux_path)
     mapping_path = f"token-{tokenizer.name}.json"
@@ -33,8 +31,8 @@ def do_exp(cia: CIAnalysis, tokenizer: BaseTokenizer, ir_model: BaseModel):
     apfd_res = []
     for ci_index in range(1, len(cia.ci_objs)):
         ci_obj = cia.ci_objs[ci_index]
-        if gitHelper.get_commit_info(ci_obj.instance.git_commit_hash) is None:
-            print(1)
+        if gitHelper.get_commit_info(ci_obj.instance.git_sha) is None:
+            logger.debug(f"commit not exist, {ci_obj.instance.git_sha}")
             continue
         last_ci_obj = cia.ci_objs[ci_index - 1]
         # start iteration of one test result
@@ -47,11 +45,13 @@ def do_exp(cia: CIAnalysis, tokenizer: BaseTokenizer, ir_model: BaseModel):
         if len(faults_arr) == 0:
             continue
         # 2. get code changes
-        code_changes = gitHelper.get_diff_contents(last_ci_obj.instance.git_commit_hash
-                                                   , ci_obj.instance.git_commit_hash)
+        code_changes = gitHelper.get_diff_contents(
+            last_ci_obj.instance.git_sha, ci_obj.instance.git_sha,
+            context_strategy)
         # Assert the code changes must greater than 5
         if len(code_changes) == 0:
             continue
+
         # 3. second obtain the sort result
         token_arr = []
         for i in range(len(test_cases)):
@@ -62,10 +62,10 @@ def do_exp(cia: CIAnalysis, tokenizer: BaseTokenizer, ir_model: BaseModel):
                 try:
                     tokens = tokenizer.get_tokens(Path(t.file_path).read_text(), t.type)
                 except Exception as e:
-                    print(e)
-                    print(t.file_path)
+                    # print(e)
+                    # print(t.file_path)
+                    tokens = []
                     continue
-
                 v = " ".join(tokens)
                 v = v.lower()
                 token_arr.append(v)
@@ -78,7 +78,7 @@ def do_exp(cia: CIAnalysis, tokenizer: BaseTokenizer, ir_model: BaseModel):
         # print(f"corpus: {len(token_arr)}, queries: {len(queries)}")
         s = ir_model.get_similarity(token_arr, queries)
 
-        print(s.shape)
+        logger.debug(s.shape)
         similarity_sum = np.sum(s, axis=1)
         # print(similarity_sum)
         # print(len(similarity_sum))
@@ -86,93 +86,43 @@ def do_exp(cia: CIAnalysis, tokenizer: BaseTokenizer, ir_model: BaseModel):
         order_arr = np.argsort(similarity_sum)[::-1]
 
         apfd_v = ehelper.APFD(faults_arr, order_arr)
-        print(f"model: {ir_model.name}, commit: {ci_obj.instance.git_commit_hash}, apfd: {apfd_v}")
+        logger.debug(f"model: {ir_model.name}, commit: {ci_obj.instance.git_sha}, apfd: {apfd_v}")
         apfd_res.append(apfd_v)
-    print(f"model: {ir_model.name}, avg apfd: {np.average(apfd_res)}")
+    logger.info(f"model: {ir_model.name}, avg apfd: {np.average(apfd_res)}")
     return f"model: {ir_model.name}, avg apfd: {np.average(apfd_res)}"
 
 
 if __name__ == '__main__':
     linux_path = '/home/wanghaichi/linux-1'
-    build_label = "all"
-    cia = load_cia("cia-fil-1.pkl")
-    # cia.ci_objs = cia.ci_objs[:10]
-    failed_map = {}
+    sql = SQLHelper()
+    start_time = datetime.now()
+    checkouts = sql.session.query(DBCheckout).order_by(DBCheckout.git_commit_datetime.desc()).limit(101).all()
+    cia = CIAnalysis()
+    for ch in checkouts:
+        cia.ci_objs.append(Checkout(ch))
+    cia.reorder()
+    cia.set_parallel_number(40)
+    cia.filter_job("COMBINE_SAME_CASE")
+    cia.filter_job("FILTER_FAIL_CASES_IN_LAST_VERSION")
+    cia.ci_objs = cia.ci_objs[1:]
     cia.statistic_data()
-    total = len(cia.ci_objs)
-    for ci_obj in cia.ci_objs:
-        failed_testcases = [x.instance.path for x in ci_obj.get_all_testcases() if (not x.is_pass())]
-        for ft in failed_testcases:
-            if ft not in failed_map.keys():
-                failed_map[ft] = 0
-            failed_map[ft] += 1
-    flaky_set = set()
-    for k, v in failed_map.items():
-        if v / total > 0.6:
-            flaky_set.add(k)
-        # print(f"{k}: {v}/{total} {v/total}")
-    # TODO 封装起来
-    for ci_obj in cia.ci_objs:
-        for build in ci_obj.builds:
-            temp = []
-            for test_case in build.tests:
-                if test_case.instance.path in flaky_set:
-                    continue
-                temp.append(test_case)
-            build.tests = temp
-
-    # cia.statistic_data()
-    # failed_map = {}
-    # for ci_obj in cia.ci_objs:
-    #     failed_testcases = [str(x.file_path) for x in ci_obj.get_all_testcases() if (not x.is_pass())]
-    #     for ft in failed_testcases:
-    #         if ft not in failed_map.keys():
-    #             failed_map[ft] = 0
-    #         failed_map[ft] += 1
-    # flaky_set = set()
-    # for k, v in failed_map.items():
-    #     print(f"{k}: {v}/{total} {v/total}")
-
-    # cia.filter_job("FILTER_CASE_BY_TYPE", case_type=[TestCaseType.C])
-    cia.statistic_data()
-
-    # exit(-1)
-    # ttt = set()
-    # for t in [x for x in cia.get_all_testcases() if x.type == TestCaseType.SH]:
-    #     ttt.add(t)
-    #
-    # for t in ttt:
-    #     print(f"{t.test_path}: {t.file_path}")
-    #
-    # exit(-1)
     tokenizers = [AstTokenizer()]
     ir_models = [
-        # Bm25Model(),
         TfIdfModel(),
-        # RandomModel(),
-        # RandomModel(),
-        # RandomModel(),
-        # RandomModel(),
-
         LSIModel(num_topics=2),
-        # LSIModel(num_topics=3),
-        # LSIModel(num_topics=4),
-        # LSIModel(num_topics=5),
         LDAModel(num_topics=2),
-        # LDAModel(num_topics=3),
-        # LDAModel(num_topics=4),
-        # LDAModel(num_topics=5),
         Bm25Model(),
     ]
-
+    context_strategy = "context"
     # tokenizer = AstTokenizer()
     # ir_model = TfIdfModel()
     # TODO 加个多线程的方式
     summary = []
     for tokenizer in tokenizers:
         for ir_model in ir_models:
-            res = do_exp(cia, tokenizer, ir_model)
+            res = do_exp(cia, tokenizer, ir_model, context_strategy)
             summary.append(res)
-    print("summary :---------------------------------")
+    logger.info("summary :---------------------------------")
+    logger.info(f"use strategy: {context_strategy}")
     for s in summary:
-        print(s)
+        logger.info(s)
