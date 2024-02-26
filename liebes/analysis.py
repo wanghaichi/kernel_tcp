@@ -114,7 +114,7 @@ class CIAnalysis:
             test_cases = ci_obj.get_all_testcases()
             if len(test_cases) < 500:
                 continue
-            l1 = len([x for x in test_cases if not x.is_pass()])
+            l1 = len([x for x in test_cases if x.is_failed()])
             path_set = set([x.instance.path for x in test_cases])
             file_set = set([x.file_path for x in test_cases])
             c_count = len([x for x in test_cases if x.type == TestCaseType.C])
@@ -122,7 +122,7 @@ class CIAnalysis:
             py_count = len([x for x in test_cases if x.type == TestCaseType.PY])
 
             logger.info(
-                f"{ci_obj.instance.git_repo_branch}: {l1} / {len(test_cases)} failed. Unique test path count: {len(path_set)}. "
+                f"{ci_obj.instance.git_sha}/{ci_obj.instance.git_repo_branch}: {l1} failed / {len(test_cases)} total. Unique test path count: {len(path_set)}. "
                 f"Unique file path count: {len(file_set)}. "
                 f"C: {c_count}, SH: {sh_count}, PY: {py_count}")
             total_c += c_count

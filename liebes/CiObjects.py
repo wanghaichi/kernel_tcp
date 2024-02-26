@@ -14,6 +14,14 @@ from liebes.test_path_mapping import has_mapping
 Base = declarative_base()
 
 
+class DBConfig(Base):
+    __tablename__ = 'config'
+    id = Column(Integer, primary_key=True)
+    url = Column(String(255))
+    content = Column(Text)
+    name = Column(String(255))
+
+
 class DBCheckout(Base):
     __tablename__ = 'checkout'
 
@@ -145,10 +153,9 @@ class Checkout:
         self.instance = db_instance
         self.builds = [Build(x) for x in self.instance.builds]
 
-
     def get_all_testcases(self) -> List['Test']:
         return [test_case for build in self.builds for test_case in build.get_all_testcases()]
-    
+
     # def combine_build(self):
 
     def filter_builds_with_less_tests(self, minimal_cases=100):
