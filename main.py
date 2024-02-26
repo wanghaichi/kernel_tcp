@@ -40,7 +40,7 @@ def do_exp(cia: CIAnalysis, tokenizer: BaseTokenizer, ir_model: BaseModel, conte
         test_cases = ci_obj.get_all_testcases()
         faults_arr = []
         for i in range(len(test_cases)):
-            if not test_cases[i].is_pass():
+            if test_cases[i].is_failed():
                 faults_arr.append(i)
         if len(faults_arr) == 0:
             continue
@@ -65,7 +65,7 @@ def do_exp(cia: CIAnalysis, tokenizer: BaseTokenizer, ir_model: BaseModel, conte
                     # print(e)
                     # print(t.file_path)
                     tokens = []
-                    continue
+                    # continue
                 v = " ".join(tokens)
                 v = v.lower()
                 token_arr.append(v)
@@ -96,7 +96,7 @@ if __name__ == '__main__':
     linux_path = '/home/wanghaichi/linux-1'
     sql = SQLHelper()
     start_time = datetime.now()
-    checkouts = sql.session.query(DBCheckout).order_by(DBCheckout.git_commit_datetime.desc()).limit(101).all()
+    checkouts = sql.session.query(DBCheckout).order_by(DBCheckout.git_commit_datetime.desc()).limit(20).all()
     cia = CIAnalysis()
     for ch in checkouts:
         cia.ci_objs.append(Checkout(ch))
@@ -113,7 +113,7 @@ if __name__ == '__main__':
         LDAModel(num_topics=2),
         Bm25Model(),
     ]
-    context_strategy = "context"
+    context_strategy = "default"
     # tokenizer = AstTokenizer()
     # ir_model = TfIdfModel()
     # TODO 加个多线程的方式

@@ -10,7 +10,7 @@ class EHelper:
         res = 0.0
         for i in range(len(test_cases_order)):
             if test_cases_order[i] in total_faults:
-                res += i
+                res += i + 1
         res /= (len(total_faults) * len(test_cases_order))
         res = 1 - res
         res += 1 / (2 * len(test_cases_order))

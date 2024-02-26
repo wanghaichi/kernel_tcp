@@ -204,6 +204,7 @@ class Test:
         self.instance = db_instance
         self._type = None
         self.file_path = self.instance.file_path
+        self.id = self.instance.id
         if self.instance.status == "Test executed successfully" or self.instance.status.lower() == "pass":
             self.status = 0
         elif self.instance.status == "Test execution failed" or self.instance.status.lower() == "fail":
@@ -255,6 +256,7 @@ class Test:
             pass
         else:
             self.status = 1
+            self.id = other_testcase.id
 
     def map_test(self) -> bool:
         if self.file_path is not None:

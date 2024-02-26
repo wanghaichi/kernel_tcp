@@ -1,185 +1,100 @@
-import json
+from tree_sitter import Language, Parser, Node
+
+from liebes.CallGraph import CallGraph
+
 import os
-import time
 
-import numpy as np
+import json
 
-from liebes.CiObjects import *
-from liebes.EHelper import EHelper
-from liebes.GitHelper import GitHelper
-from liebes.tokenizer import *
-from liebes.ir_model import *
-from datetime import datetime
-from liebes.sql_helper import SQLHelper
-from liebes.CiObjects import DBCheckout, DBBuild, DBTestRun, DBTest, Checkout
-from liebes.analysis import CIAnalysis
-from liebes.ci_logger import logger
+c_code = ''
+call_graph = {}
+api_names = []
+call_function_names = []
+files = []
+include_files = []
 
+def traverse_tree(node: Node):
+    if node.type == 'preproc_include':
+        include_files.append(c_code[node.start_byte + 9: node.end_byte - 1])
+    if node.type == 'call_expression':
+        for c in node.children:
+            if c.type == 'identifier':
+                function_name = c_code[node.start_byte: node.end_byte]
+                call_function_names.append(function_name)
 
-class TestCaseInfo:
-    def __init__(self):
-        self.file_path = ""
-        self.type = ""
-
-
-def update_token_mapping(m, mapping_path):
-    json.dump(m, Path(mapping_path).open("w"))
+    for child in node.children:
+        traverse_tree(child)
 
 
-def do_exp(cia: CIAnalysis, tokenizer: BaseTokenizer, ir_model: BaseModel):
-    ehelper = EHelper()
-    gitHelper = GitHelper(linux_path)
-    mapping_path = f"token-{tokenizer.name}.json"
-    if Path(mapping_path).exists():
-        m = json.load(Path(mapping_path).open("r"))
-    else:
-        m = {}
-    apfd_res = []
-    for ci_index in range(1, len(cia.ci_objs)):
-        ci_obj = cia.ci_objs[ci_index]
-        if gitHelper.get_commit_info(ci_obj.instance.git_sha) is None:
-            print(1)
-            continue
-        last_ci_obj = cia.ci_objs[ci_index - 1]
-        # start iteration of one test result
-        # 1. first extract the faults result
-        test_cases = ci_obj.get_all_testcases()
-        if len(test_cases) == 0:
-            continue
+def traverse_dir(directory: str):
+    files = []
+    for root, dirs, files in os.walk(directory):
+        for file in files:
+            files.append(os.path.join(root, file))
         
-        # 2. get code changes
-        code_changes = gitHelper.get_diff_contents(last_ci_obj.instance.git_sha
-                                                   , ci_obj.instance.git_sha)
-        # Assert the code changes must greater than 5
-        if len(code_changes) == 0:
-            continue
-        # 3. second obtain the sort result
-        token_arr = []
-        to_remove = []
-        for i in range(len(test_cases)):
-            t = test_cases[i]
-            if str(t.file_path) in m.keys():
-                token_arr.append(m[str(t.file_path)])
-            else:
-                try:
-                    tokens = tokenizer.get_tokens(Path(t.file_path).read_text(), t.type)
-                except Exception as e:
-                    # print(e)
-                    # print(t.file_path)
-                    tokens = []
-                    # continue
+        for dir in dirs:
+            dir_path = os.path.join(root, dir)
 
-                v = " ".join(tokens)
-                v = v.lower()
-                token_arr.append(v)
-                m[str(t.file_path)] = v
-                json.dump(m, Path(mapping_path).open("w"))
+            traverse_dir(dir_path)
 
-        print(len(test_cases))
-        faults_arr = []
-        # always_faults_arr = []
-        for i in range(len(test_cases)):
-            if test_cases[i].is_failed():
-                faults_arr.append(i)
-            # if test_cases[i].status == 10:
-            #     always_faults_arr.append(i)
-        if len(faults_arr) == 0:
-            continue
+def handle_source_code(directory: str):
+    C_LANGUAGE = Language('build/my-languages.so', 'c')
+    C_PARSER = Parser()
+    C_PARSER.set_language(C_LANGUAGE)
 
-        print(len(faults_arr))
+    traverse_dir(directory)
+    source_codes = []
+    c_files = []
+    for f in files:
+        if f.endswith('.c'):
+            c_files.append(f)
+    for f in c_files:
+        print(f)
+        with open(f, r'r', encoding='utf-8', errors='ignore') as c_file:
+            c_code = c_file.read()
+        tree = C_PARSER.parse(c_code.encode())
+        c_file.close()
+        include_files.clear()
+        call_function_names.clear()
+        traverse_tree(tree.root_node)
+        source_code = {}
+        source_code['name'] = f
+        source_code['include'] = include_files
+        source_code['call'] = call_function_names
+        source_codes.append(source_code)
+
+
+    with open(r'ltp_case_call.json', r'w', encoding='utf-8', errors='ignore') as f:
+        json.dump(source_codes, f)
+    f.close()
+
+def handle_head_file(directory: str):
+    C_LANGUAGE = Language('build/my-languages.so', 'c')
+    C_PARSER = Parser()
+    C_PARSER.set_language(C_LANGUAGE)
+
+    traverse_dir(directory)
+    h_files = []
+    for f in files:
+        if f.endswith('.h'):
+            h_files.append(f)
     
-        queries = []
-        for cc in code_changes:
-            tokens = tokenizer.get_tokens(cc, TestCaseType.C)
-            queries.append(" ".join(tokens))
-        # print(f"corpus: {len(token_arr)}, queries: {len(queries)}")
-        s = ir_model.get_similarity(token_arr, queries)
-
-        # print(s.shape)
-        similarity_sum = np.sum(s, axis=1)
-        # print(similarity_sum)
-        # print(len(similarity_sum))
-
-        order_arr = np.argsort(similarity_sum)[::-1]
-        
-        # for token_idx in order_arr:
-        #     case_content = token_arr[token_idx].split(' ')
-        #     word_dict = {}
-        #     for q in queries:
-        #         q_content = q.split(' ')
-        #         for q_word in q_content:
-        #             if q_word in case_content:
-        #                 word_dict[q_word] = word_dict.get(q_word, 0) + 1
-        #     print(word_dict)
-
-        apfd_v = ehelper.APFD(faults_arr, order_arr)
-        # print(f"model: {ir_model.name}, commit: {ci_obj.instance.git_sha}, apfd: {apfd_v}")
-        logger.info(f"model: {ir_model.name}, commit: {ci_obj.instance.git_sha}, apfd: {apfd_v}")
-        apfd_res.append(apfd_v)
-    # print(f"model: {ir_model.name}, avg apfd: {np.average(apfd_res)}")
-    logger.info(f"model: {ir_model.name}, avg apfd: {np.average(apfd_res)}")
-    return f"model: {ir_model.name}, avg apfd: {np.average(apfd_res)}"
+    for f in h_files:
+        with open(f, r'r', encoding='utf-8', errors='ignore') as h_file:
+            c_code = h_file.read()
+        tree = C_PARSER.parse(c_code.encode())
+        h_file.close()
+        include_files.clear()
+        call_function_names.clear()
+        traverse_tree(tree.root_node)
+        test_case = {}
+        test_case['name'] = f
+        test_case['include'] = include_files
+        test_case['call'] = call_function_names
+        test_cases.append(test_case)
 
 
 if __name__ == '__main__':
-    linux_path = '/home/wanghaichi/linux-1'
-    sql = SQLHelper()
-    checkouts = sql.session.query(DBCheckout).order_by(DBCheckout.git_commit_datetime.desc()).limit(101).all()
-    cia = CIAnalysis()
-    for ch in checkouts:
-        cia.ci_objs.append(Checkout(ch))
-    m = {}
-    for ch in cia.ci_objs:
-        for build in ch.builds:
-            unique_test = set([x.file_path for x in build.get_all_testcases()])
-            # print(unique_test)
-            if len(unique_test) > 1000:
-                if build.label not in m.keys():
-                    m[build.label] = 0
-                m[build.label] += 1
-    # print k , v in m, in order by v
-    for k, v in sorted(m.items(), key=lambda item: item[1]):
-        print(k, v)
-
-    cia.set_parallel_number(10)
-    # # cia.select()
-    cia.filter_job("FILTER_UNKNOWN_CASE")
-    cia.filter_job("FILTER_NOFILE_CASE")
-    cia.filter_job("COMBINE_SAME_CASE")
-    # cia.filter_job("FILTER_ALLFAIL_CASE")
-    # cia.filter_job("FILTER_NO_C_CASE")
-    # cia.filter_job("FILTER_NO_SH_CASE")
-    cia.filter_job("FILTER_FAIL_CASES_IN_LAST_VERSION")
-
-
-    tokenizers = [AstTokenizer()]
-    ir_models = [
-        Bm25Model(),
-        TfIdfModel(),
-        # RandomModel(),
-        # RandomModel(),
-        # RandomModel(),
-        # RandomModel(),
-
-        LSIModel(num_topics=2),
-        # LSIModel(num_topics=3),
-        # LSIModel(num_topics=4),
-        # LSIModel(num_topics=5),
-        LDAModel(num_topics=2),
-        # LDAModel(num_topics=3),
-        # LDAModel(num_topics=4),
-        # LDAModel(num_topics=5),
-        # Bm25Model(),
-    ]
-
-    # tokenizer = AstTokenizer()
-    # ir_model = TfIdfModel()
-    # TODO 加个多线程的方式
-    summary = []
-    for tokenizer in tokenizers:
-        for ir_model in ir_models:
-            res = do_exp(cia, tokenizer, ir_model)
-            summary.append(res)
-    print("summary :---------------------------------")
-    for s in summary:
-        print(s)
+    
+    # handle_source_code(r'test_cases/ltp/testcases')
+    pass
