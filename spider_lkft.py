@@ -6,7 +6,7 @@ from liebes.analysis import CIAnalysis
 import openpyxl
 
 if __name__ == "__main__":
-    sql = SQLHelper("/home/wanghaichi/kernelTCP/lkft/lkft.db")
+    sql = SQLHelper()
     checkouts = sql.session.query(DBCheckout).order_by(DBCheckout.git_commit_datetime.desc()).limit(10).all()
     cia = CIAnalysis()
     for ch in checkouts:

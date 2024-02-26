@@ -13,6 +13,7 @@ from datetime import datetime
 from liebes.sql_helper import SQLHelper
 from liebes.CiObjects import DBCheckout, DBBuild, DBTestRun, DBTest, Checkout
 from liebes.analysis import CIAnalysis
+from liebes.ci_logger import logger
 
 
 class TestCaseInfo:
@@ -65,22 +66,20 @@ def do_exp(cia: CIAnalysis, tokenizer: BaseTokenizer, ir_model: BaseModel):
                 except Exception as e:
                     # print(e)
                     # print(t.file_path)
-                    to_remove.append(i)
-                    continue
+                    tokens = []
+                    # continue
 
                 v = " ".join(tokens)
                 v = v.lower()
                 token_arr.append(v)
                 m[str(t.file_path)] = v
                 json.dump(m, Path(mapping_path).open("w"))
-        for idx in to_remove:
-            del test_cases[idx]
 
         print(len(test_cases))
         faults_arr = []
         # always_faults_arr = []
         for i in range(len(test_cases)):
-            if not test_cases[i].is_pass():
+            if test_cases[i].is_failed():
                 faults_arr.append(i)
             # if test_cases[i].status == 10:
             #     always_faults_arr.append(i)
@@ -114,16 +113,18 @@ def do_exp(cia: CIAnalysis, tokenizer: BaseTokenizer, ir_model: BaseModel):
         #     print(word_dict)
 
         apfd_v = ehelper.APFD(faults_arr, order_arr)
-        print(f"model: {ir_model.name}, commit: {ci_obj.instance.git_sha}, apfd: {apfd_v}")
+        # print(f"model: {ir_model.name}, commit: {ci_obj.instance.git_sha}, apfd: {apfd_v}")
+        logger.info(f"model: {ir_model.name}, commit: {ci_obj.instance.git_sha}, apfd: {apfd_v}")
         apfd_res.append(apfd_v)
-    print(f"model: {ir_model.name}, avg apfd: {np.average(apfd_res)}")
+    # print(f"model: {ir_model.name}, avg apfd: {np.average(apfd_res)}")
+    logger.info(f"model: {ir_model.name}, avg apfd: {np.average(apfd_res)}")
     return f"model: {ir_model.name}, avg apfd: {np.average(apfd_res)}"
 
 
 if __name__ == '__main__':
     linux_path = '/home/wanghaichi/linux-1'
-    sql = SQLHelper("/home/wanghaichi/kernelTCP/lkft/lkft.db")
-    checkouts = sql.session.query(DBCheckout).order_by(DBCheckout.git_commit_datetime.desc()).limit(100).all()
+    sql = SQLHelper()
+    checkouts = sql.session.query(DBCheckout).order_by(DBCheckout.git_commit_datetime.desc()).limit(101).all()
     cia = CIAnalysis()
     for ch in checkouts:
         cia.ci_objs.append(Checkout(ch))
@@ -142,29 +143,29 @@ if __name__ == '__main__':
 
     cia.set_parallel_number(10)
     # # cia.select()
-    # cia.filter_job("FILTER_UNKNOWN_CASE")
+    cia.filter_job("FILTER_UNKNOWN_CASE")
     cia.filter_job("FILTER_NOFILE_CASE")
     cia.filter_job("COMBINE_SAME_CASE")
     # cia.filter_job("FILTER_ALLFAIL_CASE")
     # cia.filter_job("FILTER_NO_C_CASE")
-    cia.filter_job("FILTER_NO_SH_CASE")
+    # cia.filter_job("FILTER_NO_SH_CASE")
     cia.filter_job("FILTER_FAIL_CASES_IN_LAST_VERSION")
 
 
     tokenizers = [AstTokenizer()]
     ir_models = [
         Bm25Model(),
-        # TfIdfModel(),
+        TfIdfModel(),
         # RandomModel(),
         # RandomModel(),
         # RandomModel(),
         # RandomModel(),
 
-        # LSIModel(num_topics=2),
+        LSIModel(num_topics=2),
         # LSIModel(num_topics=3),
         # LSIModel(num_topics=4),
         # LSIModel(num_topics=5),
-        # LDAModel(num_topics=2),
+        LDAModel(num_topics=2),
         # LDAModel(num_topics=3),
         # LDAModel(num_topics=4),
         # LDAModel(num_topics=5),
