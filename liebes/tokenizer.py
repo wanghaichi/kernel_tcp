@@ -50,6 +50,7 @@ class AstTokenizer(BaseTokenizer):
         return []
 
     def get_tokens_sh(self, contents) -> List[str]:
+        # TODO use tree-sitter to parse the shell script, and get the tokens
         # Create a lexer
         lexer = shlex.shlex(contents)
 

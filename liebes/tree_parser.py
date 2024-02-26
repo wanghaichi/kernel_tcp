@@ -13,16 +13,20 @@ from liebes.CallGraph import CallGraph
 class CodeAstParser:
     def __init__(self):
 
-        # Language.build_library(
-        #     'build/my-languages.so',
-        #     [
-        #         'parser/tree-sitter-c',
-        #     ]
-        # )
+        Language.build_library(
+            'build/my-languages.so',
+            [
+                'parser/tree-sitter-c',
+                'parser/tree-sitter-bash',
 
-        self.C_LANGUAGE = Language('build/my-languages.so', 'c')
+            ]
+        )
+
+        C_LANGUAGE = Language('build/my-languages.so', 'c')
+        BASH_LANGUAGE = Language('build/my-languages.so', 'bash')
         self.c_parser = Parser()
-        self.c_parser.set_language(self.C_LANGUAGE)
+        self.c_parser.set_language(C_LANGUAGE)
+        self.c_parser.set_language(BASH_LANGUAGE)
 
     def parse_call_func_names(self, code_snippet):
         tree = self.c_parser.parse(bytes(code_snippet, "utf8"))

@@ -22,3 +22,6 @@
 [submodule "parser/tree-sitter-c"]
 	path = parser/tree-sitter-c
 	url = https://github.com/tree-sitter/tree-sitter-c.git
+[submodule "parser/tree-sitter-bash"]
+	path = parser/tree-sitter-bash
+	url = https://github.com/tree-sitter/tree-sitter-bash.git

@@ -7,6 +7,8 @@ class EHelper:
         self.ir_model = []
 
     def APFD(self, total_faults: List, test_cases_order: List) -> float:
+        if len(total_faults) == 0 or len(test_cases_order) == 0:
+            return 0.5
         res = 0.0
         for i in range(len(test_cases_order)):
             if test_cases_order[i] in total_faults:

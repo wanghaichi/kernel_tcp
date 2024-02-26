@@ -105,16 +105,18 @@ class GitHelper:
                     for line in diff_lines:
                         if line.startswith("-"):
                             # line = line.removeprefix("-").strip()
+                            # print(line)
                             original_line_number += 1
                             temp.append((original_line_number, modified_line_number, line))
                         elif line.startswith("+"):
+                            # print(line)
                             # line = line.removeprefix("+").strip()
                             modified_line_number += 1
                             temp.append((original_line_number, modified_line_number, line))
                         else:
                             original_line_number += 1
                             modified_line_number += 1
-
+                    # print(temp)
                     diff_content.append(temp)
                     file_list.append(diff_obj.b_path)
                 except Exception as e:
@@ -164,6 +166,9 @@ class GitHelper:
                 call_func = self.ast_parser.parse_call_func_names(db.content)
                 db.called_functions = [x for x in call_func]
             res.extend(diff_list)
+        # print("start to print!!")
+        # for t in res:
+        #     print(t)
         return res
 
     def get_diff_contents(self, commit, to_commit, strategy="default"):
