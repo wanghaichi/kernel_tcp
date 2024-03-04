@@ -125,7 +125,8 @@ if __name__ == '__main__':
     linux_path = '/home/wanghaichi/linux-1'
     sql = SQLHelper()
     start_time = datetime.now()
-    checkouts = sql.session.query(DBCheckout).order_by(DBCheckout.git_commit_datetime.desc()).limit(201).all()
+
+    checkouts = sql.session.query(DBCheckout).order_by(DBCheckout.git_commit_datetime.desc()).limit(20).all()
     cia = CIAnalysis()
     for ch in checkouts:
         cia.ci_objs.append(Checkout(ch))
@@ -143,8 +144,8 @@ if __name__ == '__main__':
         LDAModel(num_topics=2),
         Bm25Model(),
     ]
-    # context_strategy = "default"
-    context_strategy = "context"
+
+    context_strategy = "default"
     # tokenizer = AstTokenizer()
     # ir_model = TfIdfModel()
     logger.info("start exp, use context strategy: " + context_strategy)
