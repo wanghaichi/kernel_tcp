@@ -173,6 +173,9 @@ class CIAnalysis:
                 for testrun in build.testruns:
                     temp = []
                     for test_case in testrun.tests:
+                        # TODO 临时加的，目前数据库里面有些文件不存在，不知道为啥
+                        if not Path(test_case.file_path).exists():
+                            continue
                         if test_case.status == 1:
                             fail_cases_dict[build.instance.build_name].append(test_case.file_path)
                             if test_case.file_path not in fail_case_in_last_version.get(build.instance.build_name, []):

@@ -17,16 +17,15 @@ class CodeAstParser:
             'build/my-languages.so',
             [
                 'parser/tree-sitter-c',
-                'parser/tree-sitter-bash',
-
+                # 'parser/tree-sitter-bash',
             ]
         )
 
         C_LANGUAGE = Language('build/my-languages.so', 'c')
-        BASH_LANGUAGE = Language('build/my-languages.so', 'bash')
+        # BASH_LANGUAGE = Language('build/my-languages.so', 'bash')
         self.c_parser = Parser()
         self.c_parser.set_language(C_LANGUAGE)
-        self.c_parser.set_language(BASH_LANGUAGE)
+        # self.c_parser.set_language(BASH_LANGUAGE)
 
     def parse_call_func_names(self, code_snippet):
         tree = self.c_parser.parse(bytes(code_snippet, "utf8"))

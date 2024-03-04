@@ -156,7 +156,12 @@ class Checkout:
     def get_all_testcases(self) -> List['Test']:
         return [test_case for build in self.builds for test_case in build.get_all_testcases()]
 
-    # def combine_build(self):
+    def get_case_by_file_path(self, file_path: str) -> 'Test' or None:
+        for tc in self.get_all_testcases():
+            if tc.file_path == file_path:
+                return tc
+        return None
+        # def combine_build(self):
 
     def filter_builds_with_less_tests(self, minimal_cases=100):
         temp = []

@@ -29,6 +29,14 @@ class GitHelper:
         self.cg = CallGraph()
         self.cg.load_from_source("/home/wanghaichi/llvm_kernel/output-cg.txt")
 
+    def get_first_commit_info(self, file_path):
+        file_commits = list(self.repo.iter_commits(paths=file_path))
+        if file_commits:
+            first_commit = file_commits[-1]
+            return first_commit
+        else:
+            return None
+
     def get_commit_info(self, commit_id):
         try:
             commit_obj = self.repo.commit(commit_id)
