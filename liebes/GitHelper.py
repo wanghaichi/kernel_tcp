@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from git import Repo
 import difflib
 
@@ -29,6 +31,22 @@ class GitHelper:
         self.cg = CallGraph()
         self.cg.load_from_source("/home/wanghaichi/llvm_kernel/output-cg.txt")
 
+    def get_commit_info_by_time(self, target_time):
+        # Iterate over the commits
+        for commit in self.repo.iter_commits():
+            commit_time = datetime.fromtimestamp(commit.committed_date)
+
+            # Check if the commit is before the target time
+            if commit_time < target_time:
+                return commit
+                # Print the commit information
+                # print("Commit:", commit.hexsha)
+                # print("Author:", commit.author.name)
+                # print("Date:", commit_time)
+                # print("Message:", commit.message)
+                # break  # Stop iterating after finding the commit
+        return None
+
     def get_first_commit_info(self, file_path):
         file_commits = list(self.repo.iter_commits(paths=file_path))
         if file_commits:
@@ -50,6 +68,15 @@ class GitHelper:
             return commit_obj.tree[file_path].data_stream.read().decode('utf-8', errors='ignore')
         except Exception as e:
             return None
+
+    def get_changed_files(self, commit, to_commit):
+        commit_obj_a = self.repo.commit(commit)
+        commit_obj_b = self.repo.commit(to_commit)
+        diff = commit_obj_a.diff(commit_obj_b)
+        res = []
+        for diff_obj in diff:
+            res.append(diff_obj.b_path)
+        return res
 
     def get_diff_blocks(self, commit, to_commit):
         commit_obj_a = self.repo.commit(commit)

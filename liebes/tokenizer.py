@@ -58,8 +58,11 @@ class AstTokenizer(BaseTokenizer):
         lexer.whitespace_split = True
         lexer.commenters = ''
         lexer.wordchars += '${}[]<>|&;'
-
+        try:
+            tokens = list(lexer)
+        except ValueError as e:
+            logger.error(f"tokenizer failed with {e}, ignore")
+            tokens = []
         # Get the tokens
-        tokens = list(lexer)
 
         return tokens

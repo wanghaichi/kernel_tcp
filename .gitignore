@@ -13,4 +13,6 @@ liebes/__pycache__
 
 logs/
 *.db
+# local file only
 temp.py
+local.py

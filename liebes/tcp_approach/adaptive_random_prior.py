@@ -8,74 +8,13 @@ from liebes.analysis import CIAnalysis
 from liebes.EHelper import EHelper
 from liebes.sql_helper import SQLHelper
 from liebes.ci_logger import logger
-
+from liebes.tcp_approach.metric_manager import DistanceMetric
 distance_map = {}
 
-def euclidean_string_distance(s1, s2):
-    len_diff = abs(len(s1) - len(s2))
-    if len(s1) < len(s2):
-        s1 += '\0' * len_diff
-    elif len(s1) > len(s2):
-        s2 += '\0' * len_diff
-    point1 = [ord(char) for char in s1]
-    point2 = [ord(char) for char in s2]
-    squared_diff = sum((p1 - p2) ** 2 for p1, p2 in zip(point1, point2))
-    return math.sqrt(squared_diff)
-
-def jaccard_distance_function(set1, set2):
-    set1 = set(set1)
-    set2 = set(set2)
-    intersection = len(set1.intersection(set2))
-    union = len(set1.union(set2))
-
-    distance = 1 - intersection / union
-    return distance
-
-def manhattan_string_distance(s1, s2):
-    len_diff = abs(len(s1) - len(s2))
-    if len(s1) < len(s2):
-        s1 += '\0' * len_diff
-    elif len(s1) > len(s2):
-        s2 += '\0' * len_diff
-    point1 = [ord(char) for char in s1]
-    point2 = [ord(char) for char in s2]
-
-    distance = 0
-    for i in range(len(point1)):
-        distance += abs(point1[i] - point2[i])
-    return distance
-
-def edit_distance(s1, s2):
-    m, n = len(s1), len(s2)
-    dp = [[0] * (n + 1) for _ in range(m + 1)]
-
-    for i in range(m + 1):
-        dp[i][0] = i
-    for j in range(n + 1):
-        dp[0][j] = j
-
-    for i in range(1, m + 1):
-        for j in range(1, n + 1):
-            if s1[i - 1] == s2[j - 1]:
-                dp[i][j] = dp[i - 1][j - 1]
-            else:
-                dp[i][j] = min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + 1)
-
-    return dp[m][n]
-
-def hanming_distance(s1, s2):
-    len_diff = abs(len(s1) - len(s2))
-    if len(s1) < len(s2):
-        s1 += '\0' * len_diff
-    elif len(s1) > len(s2):
-        s2 += '\0' * len_diff
-    distance = 0
-    for i in range(len(s1)):
-        if s1[i] != s2[i]:
-            distance += 1
-    return distance
-
 def ARP(test_cases: list[Test], k: int, distance_metric: str, candidate_stragety: str):
+
+    dm = DistanceMetric()
+
     if distance_metric is None:
         distance_metric = 'edit_distance'
     if candidate_stragety is None:
@@ -102,12 +41,14 @@ def ARP(test_cases: list[Test], k: int, distance_metric: str, candidate_stragety
                 pt = test_cases[p_idx]
                 distance = distance_map.get(pt.file_path, {}).get(candidate.file_path, None)
                 if distance is None:
+                    # if Path(candidate.file_path).is_dir():
+                    #     print(candidate.instance.id, candidate.file_path, candidate.instance.path)
                     candidate_text = Path(candidate.file_path).read_text(encoding='utf-8', errors='ignore')
                     pt_text = Path(pt.file_path).read_text(encoding='utf-8', errors='ignore')
                     if distance_metric == 'edit_distance':
-                        distance = edit_distance(candidate_text, pt_text)
+                        distance = dm.edit_distance(candidate_text, pt_text)
                     elif distance_metric == 'hanming_distance':
-                        distance = hanming_distance(candidate_text, pt_text)
+                        distance = dm.hanming_distance(candidate_text, pt_text)
 
                     tmp_dict = distance_map.get(pt.file_path, {})
                     tmp_dict[candidate.file_path] = distance
@@ -115,18 +56,19 @@ def ARP(test_cases: list[Test], k: int, distance_metric: str, candidate_stragety
                 d[row][col] = distance
                 row += 1
             col += 1
-        
+
         if candidate_stragety == 'min_max':
             neighbours = list(np.min(d, axis=0))
             max_idx = neighbours.index(max(neighbours))
             next_pt_idx = candidate_list[max_idx]
-        
+
         prioritized_list.append(next_pt_idx)
         idx_list.remove(next_pt_idx)
         idx_list_len -= 1
-        print(idx_list_len)
+        # print(idx_list_len)
 
     return prioritized_list
+
 
 def do_exp(cia: CIAnalysis, k: int, distance_metric: str, candidate_stragety: str):
     ehelper = EHelper()
@@ -148,7 +90,8 @@ def do_exp(cia: CIAnalysis, k: int, distance_metric: str, candidate_stragety: st
         apfd_v = ehelper.APFD(faults_arr, prioritized_list)
         logger.debug(f"distance_metric: {distance_metric}, commit: {ci_obj.instance.git_sha}, apfd: {apfd_v}")
         apfd_res.append(apfd_v)
-    logger.info(f"distance_metric: {distance_metric}, candidate_stragety: {candidate_stragety}, avg apfd: {np.average(apfd_res)}")
+    logger.info(
+        f"distance_metric: {distance_metric}, candidate_stragety: {candidate_stragety}, avg apfd: {np.average(apfd_res)}")
     return f"distance_metric: {distance_metric}, candidate_stragety: {candidate_stragety}, avg apfd: {np.average(apfd_res)}"
 
 # if __name__ == '__main__':

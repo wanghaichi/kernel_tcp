@@ -195,7 +195,7 @@ class CIAnalysis:
                 for testrun in build.testruns:
                     temp = []
                     for test_case in testrun.tests:
-                        if test_case.map_test() and Path(test_case.file_path).exists():
+                        if test_case.map_test() and Path(test_case.file_path).exists() and Path(test_case.file_path).is_file():
                             temp.append(test_case)
                         # else:
                         #     if "login" in test_case.test_path or "speculative" in test_case.test_path:
