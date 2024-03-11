@@ -3,10 +3,8 @@ from enum import Enum
 from pathlib import Path
 from typing import List
 
-from pqdm.threads import pqdm
 from sqlalchemy import Column, String, ForeignKey, Text, Boolean, Integer, DateTime
 from sqlalchemy.orm import declarative_base, relationship
-from tqdm import tqdm
 
 # from liebes.ci_logger import logger
 from liebes.test_path_mapping import has_mapping
@@ -43,7 +41,7 @@ class DBCheckout(Base):
     builds = relationship('DBBuild', back_populates='checkout',
                           primaryjoin="and_("
                                       "DBCheckout.id == DBBuild.checkout_id, "
-                                      "or_(DBBuild.build_name =='clang-17-lkftconfig', DBBuild.build_name =='clang-16-lkftconfig'), "
+                                      "or_(DBBuild.build_name =='gcc-13-lkftconfig', DBBuild.build_name =='gcc-13-lkftconfig-compat', DBBuild.build_name == 'gcc-13-lkftconfg-kselftest'), "
                                       "DBBuild.arch == 'x86_64', DBBuild.build_name != '')")
 
     def __str__(self):

@@ -137,25 +137,3 @@ if __name__ == '__main__':
     # cia.ci_objs = cia.ci_objs[1:]
     cia.statistic_data()
 
-    tokenizers = [AstTokenizer()]
-    ir_models = [
-        TfIdfModel(),
-        LSIModel(num_topics=2),
-        LDAModel(num_topics=2),
-        Bm25Model(),
-    ]
-
-    context_strategy = "default"
-    # tokenizer = AstTokenizer()
-    # ir_model = TfIdfModel()
-    logger.info("start exp, use context strategy: " + context_strategy)
-    # TODO 加个多线程的方式
-    summary = []
-    for tokenizer in tokenizers:
-        for ir_model in ir_models:
-            res = do_exp(cia, tokenizer, ir_model, context_strategy)
-            summary.append(res)
-    logger.info("summary :---------------------------------")
-    logger.info(f"use strategy: {context_strategy}")
-    for s in summary:
-        logger.info(s)
