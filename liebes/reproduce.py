@@ -10,12 +10,11 @@ import shutil
 
 
 class ReproUtil:
-    def __init__(self, home_dir, fs_image_root, port, linux_dir):
+    def __init__(self, home_dir, fs_image_root, port, linux_dir, ltp_dir):
         self.home_dir = home_dir
         self.kernel_image_path = None
         self.work_linux_dir = None
         self.fs_image_root = self.home_dir + "/" + fs_image_root
-
         self.fs_image_path = self.fs_image_root + "/bullseye.img"
         self.ssh_key = self.fs_image_root + "/bullseye.id_rsa"
 
@@ -24,6 +23,10 @@ class ReproUtil:
         self.base_linux_dir = self.home_dir + "/" + linux_dir
 
         self.result_dir = None
+        self.ltp_dir = self.home_dir + "/" + ltp_dir
+        self.ltp_bin = None
+
+        self.vm_bin = "/root/ltp_bin"
         pass
 
     def run_command(self, cmd, cwd=None):
@@ -35,6 +38,46 @@ class ReproUtil:
             print("execute command failed: ", cmd)
             print("error message: ", result.stderr)
         return result
+
+    def prepare_ltp_binary(self, git_sha):
+        # step0. update ltp to the latest version
+        cmd = "git pull origin master"
+        if self.run_command(cmd, self.ltp_dir).returncode != 0:
+            return False
+
+        # step1. checkout ltp to the specific git sha
+
+        work_ltp_dir = Path(f"{self.home_dir}/repro_ltps/{git_sha}")
+        # TODO check if it is already exist
+        if work_ltp_dir.exists() and (work_ltp_dir / "build").exists():
+            self.ltp_bin = work_ltp_dir / "build"
+            return True
+        # work_ltp_dir.mkdir(parents=True)
+        cmd = f"cp -r {self.ltp_dir} {work_ltp_dir}"
+        if self.run_command(cmd).returncode != 0:
+            return False
+        cmd = "git checkout " + git_sha + " && git clean -df"
+        if self.run_command(cmd, work_ltp_dir).returncode != 0:
+            return False
+        # step2. make whole ltp into binary, the location of the binary is ./build
+        cmd = f"make autotools && mkdir build && ./configure --prefix={work_ltp_dir / 'build'}"
+        if self.run_command(cmd, work_ltp_dir).returncode != 0:
+            return False
+        cmd = f"make -k -j`nproc` && make -k install"
+        if self.run_command(cmd, work_ltp_dir).returncode != 0:
+            return False
+        self.ltp_bin = work_ltp_dir / "build"
+        print("ltp bin is located at ", work_ltp_dir / "build")
+        return True
+
+    def copy_ltp_bin_to_vm(self):
+        cmd = f"rm -rf {self.vm_bin}"
+        if self.execute_cmd_in_qemu(cmd).returncode != 0:
+            return False
+        cmd = f"scp -i {self.ssh_key} -P {self.vm_port} -o \"StrictHostKeyChecking no\" -r {self.ltp_bin} root@localhost:/root/ltp_bin"
+        if self.run_command(cmd).returncode != 0:
+            return False
+        return True
 
     def prepare_linux_image(self, git_sha, base_config, extra_config, renew=False):
         work_linux_dir = Path(f"{self.home_dir}/repro_linuxs/{git_sha}")
@@ -84,7 +127,25 @@ class ReproUtil:
         image_path = f"{work_linux_dir}/arch/x86/boot/bzImage"
         if not Path(image_path).exists():
             return False
+        cmd = f"ssh-keygen -R [localhost]:{self.vm_port}"
+        self.run_command(cmd)
         return True
+
+    def analysis_ltp_result(self, result_text):
+        #  1. extract TPASS, TFAIL, TSKIP
+        # 2. extract Summary
+        # "Summary:
+        # passed   3
+        # failed   0
+        # broken   0
+        # skipped  0
+        # warnings 0"
+        # 3. figure out the reason of not executed
+        # 3.1 xxx not found (need to install the corresponding package)
+        # 3.2 INFO: ltp-pan reported some tests FAIL (need to check the reason, one reason is
+        #     the testcase should be executed in a shell command)
+
+        pass
 
     def start_qemu(self):
         cmd = f'qemu-system-x86_64 \
@@ -111,8 +172,8 @@ class ReproUtil:
         res = self.run_command(cmd)
         return res
 
-    def execute_ltp_testcase(self, testcase_name, save_result=True):
-        cmd = f'cd /root/ltp_bin && ./runltp -s {testcase_name}'
+    def execute_ltp_testcase(self, testcase_name, timeout=30, save_result=True):
+        cmd = f'cd /root/ltp_bin && timeout {30}s ./runltp -s {testcase_name}'
         res = self.execute_cmd_in_qemu(cmd)
         if save_result:
             if res.returncode != 0:
