@@ -2,9 +2,8 @@ import pickle
 from pathlib import Path
 from typing import List
 
-from pqdm.threads import pqdm
 from tqdm import tqdm
-
+from pqdm.threads import pqdm
 from liebes.CiObjects import Checkout, Test, TestCaseType
 from collections import defaultdict
 from liebes.ci_logger import logger
@@ -254,12 +253,37 @@ class CIAnalysis:
                         status_m[testcase.file_path] = testcase
                         temp.append(testcase)
                     testrun.tests = temp
+        return ci_objs
+    
+    @staticmethod
+    def _combine_same_config_(ci_objs: List['Checkout']):
+        same_config_builds={}
+        for ci_obj in ci_objs:
+            for build in ci_obj.builds:
+                config=build.instance.kconfig
+                if isinstance(config,list):
+                    config_key=tuple(sorted(config))
+                else:
+                    config_key=tuple(sorted(config.split()))
+                if config_key in same_config_builds:
+                    same_config_builds[config_key].append(build)
+                else:
+                    same_config_builds[config_key]=[build]
+        for config_key, builds_list in same_config_builds.items():
+            if len(builds_list) > 1:
+                print("Same kconfig builds found:")
+                for build in builds_list:
+                    print(f"Build ID: {build.instance.id}")  
+        for builds_list in same_config_builds.values():
+            merged_tests=[]
+            for build in builds_list:
+                for testrun in build.testruns:
+                    merged_tests.extend(testrun.tests)
 
-            # update statusA
-            # for build in ci_obj.builds:
-            #     for testrun in build.testruns:
-            #         for i in range(len(testrun.tests)):
-            #             testrun.tests[i].merge_status(status_m[testrun.tests[i].file_path])
+            merged_tests=list(set(merged_tests))
+            for build in builds_list:
+                for testrun in build.testruns:
+                    testrun.tests=merged_tests
         return ci_objs
 
     def assert_all_test_file_exists(self):
@@ -311,6 +335,10 @@ class CIAnalysis:
             logger.debug(f"filter always failed test cases job start. Threads number: {self.number_of_threads}.")
             _ = self.test_case_status_map
             job_func = self.filter_always_failed_test_cases
+
+        if job_task == "COMBINE_SAME_CONFIG":
+            logger.debug(f"combine same config job start. Threads number: {self.number_of_threads}.")
+            job_func = self._combine_same_config_
 
         if job_task == "FILTER_NO_C_CASE":
             job_func = self._filter_no_c_cases
