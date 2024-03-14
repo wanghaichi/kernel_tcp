@@ -257,33 +257,29 @@ class CIAnalysis:
     
     @staticmethod
     def _combine_same_config_(ci_objs: List['Checkout']):
-        same_config_builds={}
+        same_config_builds = {}
+        deleted_builds = []
+
         for ci_obj in ci_objs:
             for build in ci_obj.builds:
-                config=build.instance.kconfig
-                if isinstance(config,list):
-                    config_key=tuple(sorted(config))
+                config = build.instance.kconfig
+                if isinstance(config, list):
+                    config_key = tuple(sorted(config))
                 else:
-                    config_key=tuple(sorted(config.split()))
-                if config_key in same_config_builds:
+                    config_key = tuple(sorted(config.split()))
+                if config_key in same_config_builds: #如果找到config重复的build
                     same_config_builds[config_key].append(build)
+                    print(f"Same kconfig builds found:Build ID: {build.instance.id}")
+                    deleted_builds.append(build.instance.id)
+                    same_config_builds[config_key][0].testruns.extend(build.testruns)
+                    ci_obj.builds.remove(build)
                 else:
-                    same_config_builds[config_key]=[build]
-        for config_key, builds_list in same_config_builds.items():
-            if len(builds_list) > 1:
-                print("Same kconfig builds found:")
-                for build in builds_list:
-                    print(f"Build ID: {build.instance.id}")  
-        for builds_list in same_config_builds.values():
-            merged_tests=[]
-            for build in builds_list:
-                for testrun in build.testruns:
-                    merged_tests.extend(testrun.tests)
+                    same_config_builds[config_key] = [build]
 
-            merged_tests=list(set(merged_tests))
-            for build in builds_list:
-                for testrun in build.testruns:
-                    testrun.tests=merged_tests
+        # Step 3: Write deleted build IDs to a file
+        with open("deleted_builds.txt", "w") as f:
+            f.write("\n".join(deleted_builds))
+
         return ci_objs
 
     def assert_all_test_file_exists(self):
