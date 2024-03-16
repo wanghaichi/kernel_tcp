@@ -2,14 +2,18 @@ import math
 import sys
 import random
 import pathlib
+import os
 from liebes.CiObjects import *
+import json
 import numpy as np
 from liebes.analysis import CIAnalysis
 from liebes.EHelper import EHelper
 from liebes.sql_helper import SQLHelper
 from liebes.ci_logger import logger
+import Levenshtein
+import traceback
 
-distance_map = {}
+distance_global_map = {}
 
 def euclidean_string_distance(s1, s2):
     len_diff = abs(len(s1) - len(s2))
@@ -46,22 +50,24 @@ def manhattan_string_distance(s1, s2):
     return distance
 
 def edit_distance(s1, s2):
-    m, n = len(s1), len(s2)
-    dp = [[0] * (n + 1) for _ in range(m + 1)]
+    # m, n = len(s1), len(s2)
+    # dp = [[0] * (n + 1) for _ in range(m + 1)]
 
-    for i in range(m + 1):
-        dp[i][0] = i
-    for j in range(n + 1):
-        dp[0][j] = j
+    # for i in range(m + 1):
+    #     dp[i][0] = i
+    # for j in range(n + 1):
+    #     dp[0][j] = j
 
-    for i in range(1, m + 1):
-        for j in range(1, n + 1):
-            if s1[i - 1] == s2[j - 1]:
-                dp[i][j] = dp[i - 1][j - 1]
-            else:
-                dp[i][j] = min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + 1)
+    # for i in range(1, m + 1):
+    #     for j in range(1, n + 1):
+    #         if s1[i - 1] == s2[j - 1]:
+    #             dp[i][j] = dp[i - 1][j - 1]
+    #         else:
+    #             dp[i][j] = min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + 1)
 
-    return dp[m][n]
+    # return dp[m][n]
+
+    return Levenshtein.distance(s1, s2)
 
 def hanming_distance(s1, s2):
     len_diff = abs(len(s1) - len(s2))
@@ -75,12 +81,54 @@ def hanming_distance(s1, s2):
             distance += 1
     return distance
 
+def get_distance_map(test_cases: list[Test], distance_metric: str):
+    map_file = r'distance_' + distance_metric + r'_map.json'
+    distance_map = {}
+    if os.path.exists(map_file):
+        with open(map_file, r'r') as f:
+            distance_map = json.load(f)[0]
+        f.close()
+    else:
+        for t1 in test_cases:
+            for t2 in test_cases:
+                t1_k = t1.file_path
+                t2_k = t2.file_path
+                distance = distance_map.get(t2_k, {}).get(t1_k, None)
+                if distance is None:
+                    t1_text = Path(t1_k).read_text(encoding='utf-8', errors='ignore')
+                    t2_text = Path(t2_k).read_text(encoding='utf-8', errors='ignore')
+                    if distance_metric == 'hanming_distance':
+                        distance = hanming_distance(t1_text, t2_text)
+                    if distance_metric == 'edit_distance':
+                        distance = edit_distance(t1_text, t2_text)
+                    elif distance_metric == 'euclidean_string_distance':
+                        distance = euclidean_string_distance(t1_text, t2_text)
+                    elif distance_metric == 'manhattan_string_distance':
+                        distance = manhattan_string_distance(t1_text, t2_text)
+                    tmp_dict = distance_map.get(t1_k, {})
+                    tmp_dict[t2_k] = distance
+                    distance_map[t1_k] = tmp_dict
+
+                else: 
+                    tmp_dict = distance_map.get(t1_k, {})
+                    tmp_dict[t2_k] = distance
+                    distance_map[t1_k] = tmp_dict
+            
+        with open(map_file, r'w') as f:
+            json.dump([distance_map], f, indent=4)
+        f.close()
+    
+    return distance_map
+
+    
+
 def ARP(test_cases: list[Test], k: int, distance_metric: str, candidate_stragety: str):
     if distance_metric is None:
         distance_metric = 'edit_distance'
     if candidate_stragety is None:
         candidate_stragety = 'min_max'
 
+    distance_global_map = get_distance_map(test_cases, distance_metric)
     candidate_list = []
     prioritized_list = []
     test_cases_len = len(test_cases)
@@ -89,6 +137,7 @@ def ARP(test_cases: list[Test], k: int, distance_metric: str, candidate_stragety
     prioritized_list.append(first_idx)
     idx_list.remove(first_idx)
     idx_list_len = len(idx_list)
+    map_change_flag = False
     while idx_list_len != 0:
         candidate_list = []
         k = min(k, idx_list_len)
@@ -100,7 +149,9 @@ def ARP(test_cases: list[Test], k: int, distance_metric: str, candidate_stragety
             row = 0
             for p_idx in prioritized_list:
                 pt = test_cases[p_idx]
-                distance = distance_map.get(pt.file_path, {}).get(candidate.file_path, None)
+                distance = distance_global_map.get(pt.file_path, {}).get(candidate.file_path, None)
+                if distance is None:
+                    distance = distance_global_map.get(candidate.file_path, {}).get(pt.file_path, None)
                 if distance is None:
                     candidate_text = Path(candidate.file_path).read_text(encoding='utf-8', errors='ignore')
                     pt_text = Path(pt.file_path).read_text(encoding='utf-8', errors='ignore')
@@ -108,10 +159,15 @@ def ARP(test_cases: list[Test], k: int, distance_metric: str, candidate_stragety
                         distance = edit_distance(candidate_text, pt_text)
                     elif distance_metric == 'hanming_distance':
                         distance = hanming_distance(candidate_text, pt_text)
+                    elif distance_metric == 'euclidean_string_distance':
+                        distance = euclidean_string_distance(candidate_text, pt_text)
+                    elif distance_metric == 'manhattan_string_distance':
+                        distance = manhattan_string_distance(candidate_text, pt_text)
 
-                    tmp_dict = distance_map.get(pt.file_path, {})
+                    tmp_dict = distance_global_map.get(pt.file_path, {})
                     tmp_dict[candidate.file_path] = distance
-                    distance_map[pt.file_path] = tmp_dict
+                    distance_global_map[pt.file_path] = tmp_dict
+                    map_change_flag = True
                 d[row][col] = distance
                 row += 1
             col += 1
@@ -123,9 +179,14 @@ def ARP(test_cases: list[Test], k: int, distance_metric: str, candidate_stragety
         
         prioritized_list.append(next_pt_idx)
         idx_list.remove(next_pt_idx)
+        # print(idx_list_len)
         idx_list_len -= 1
-        print(idx_list_len)
-
+    
+    if map_change_flag:
+        map_file = r'distance_' + distance_metric + r'_map.json'
+        with open(map_file, r'w') as f:
+            json.dump([distance_global_map], f, indent=4)
+        f.close()
     return prioritized_list
 
 def do_exp(cia: CIAnalysis, k: int, distance_metric: str, candidate_stragety: str):
@@ -144,10 +205,13 @@ def do_exp(cia: CIAnalysis, k: int, distance_metric: str, candidate_stragety: st
         if len(faults_arr) == 0:
             continue
 
-        prioritized_list = ARP(test_cases, k, distance_metric, candidate_stragety)
-        apfd_v = ehelper.APFD(faults_arr, prioritized_list)
-        logger.debug(f"distance_metric: {distance_metric}, commit: {ci_obj.instance.git_sha}, apfd: {apfd_v}")
-        apfd_res.append(apfd_v)
+        try:
+            prioritized_list = ARP(test_cases, k, distance_metric, candidate_stragety)
+            apfd_v = ehelper.APFD(faults_arr, prioritized_list)
+            logger.debug(f"distance_metric: {distance_metric}, commit: {ci_obj.instance.git_sha}, apfd: {apfd_v}")
+            apfd_res.append(apfd_v)
+        except:
+            traceback.print_exc()
     logger.info(f"distance_metric: {distance_metric}, candidate_stragety: {candidate_stragety}, avg apfd: {np.average(apfd_res)}")
     return f"distance_metric: {distance_metric}, candidate_stragety: {candidate_stragety}, avg apfd: {np.average(apfd_res)}"
 

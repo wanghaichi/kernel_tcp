@@ -150,6 +150,38 @@ class CallGraph:
                 print(f"\t{callee.function_name}")
             print("")
 
+    def get_ground_func(self, root_node_name):
+        root_node = self.node_map.get(root_node_name)
+        visited_set = set()
+        ground_func_set = set()
+        stack = [root_node]
+
+        while stack:
+            cur_node = stack.pop()
+            if cur_node not in visited_set:
+                visited_set.add(cur_node)
+                if len(cur_node.caller) == 0:
+                    ground_func_set.add(cur_node)
+                else:
+                    stack.extend(cur_node.caller)
+        
+        return ground_func_set
+        # for node_name in self.node_map:
+        #     cur_node = self.node_map.get(node_name)
+        #     if len(cur_node.caller) == 0:
+        #         ground_func_set.add(cur_node)
+        # return ground_func_set
+
+    def get_top_func(self, orgin_file):
+        top_func_set = set()
+        for cur_node in self.node_map.values():
+            if cur_node.file_path is None:
+                continue
+            if orgin_file in cur_node.file_path and len(cur_node.callee) == 0:
+                top_func_set.add(cur_node)
+        
+        return top_func_set
+
 
 class GraphNode:
     def __init__(self):

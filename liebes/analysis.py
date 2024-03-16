@@ -192,7 +192,7 @@ class CIAnalysis:
                 for testrun in build.testruns:
                     temp = []
                     for test_case in testrun.tests:
-                        if test_case.map_test() and Path(test_case.file_path).exists():
+                        if test_case.map_test() and Path(test_case.file_path).exists() and test_case.file_path != '':
                             temp.append(test_case)
                         # else:
                         #     if "login" in test_case.test_path or "speculative" in test_case.test_path:
@@ -258,6 +258,7 @@ class CIAnalysis:
             #         for i in range(len(testrun.tests)):
             #             testrun.tests[i].merge_status(status_m[testrun.tests[i].file_path])
         return ci_objs
+    
 
     def assert_all_test_file_exists(self):
         flag = True
