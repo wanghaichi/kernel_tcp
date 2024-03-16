@@ -104,13 +104,20 @@ class CIAnalysis:
     #     after_branch = len(self.ci_objs)
     #     logger.debug(f"filter {before_branch - after_branch} branches, reduce test_cases from {before} to {after}")
 
-    def statistic_data(self):
+    def statistic_data(self, build_name=None):
         self.reorder()
         total_c = 0
         total_sh = 0
         total_py = 0
+
         for ci_obj in self.ci_objs:
             test_cases = ci_obj.get_all_testcases()
+            if build_name is not None:
+                test_cases = []
+                for b in ci_obj.builds:
+                    if b.instance.build_name == build_name:
+                        test_cases = b.get_all_testcases()
+                        break
             if len(test_cases) < 500:
                 continue
             l1 = len([x for x in test_cases if x.is_failed()])
@@ -257,41 +264,39 @@ class CIAnalysis:
 
     @staticmethod
     def _combine_same_config_(ci_objs: List['Checkout']):
-
-        same_config_builds = {}  # 以config为键，用于存放config相同的build
-        combine_build = []  # 用于存储合并后的build_id
-        build_id_num = {}  # 希望以build_id为键，对应第一个build合并前的数据
-        deleted_builds = []  # 记录删除掉重复的build
         for ci_obj in ci_objs:
+            same_config_builds = {}  # 以config为键，用于存放config相同的build
             for build in ci_obj.builds:
                 config = build.instance.kconfig
+                # print(config)
                 if isinstance(config, list):
                     config_key = tuple(sorted(config))
                 else:
                     config_key = tuple(sorted(config.split()))
                 if config_key in same_config_builds:  # 如果找到config重复的build
-                    combine_build.append(same_config_builds[config_key][0].instance.id)
                     same_config_builds[config_key].append(build)
-                    print(f"Same kconfig builds found:Build ID: {build.instance.id}")
-                    deleted_builds.append(build.instance.id)  # 记录重复的build_id
-                    same_config_builds[config_key][0].testruns.extend(build.testruns)  # 合并操作
-                    ci_obj.builds.remove(build)  # 去掉多余的builds
                 else:
                     same_config_builds[config_key] = [build]
-                    build_id_num[build.instance.id] = [len(build.get_all_testcases())]  # 记录合并build的初始test数量
-        deleted_builds = [str(build_id) for build_id in deleted_builds]
-        with open("deleted_builds.txt", "w") as f_deleted:
-            f_deleted.write("\n".join(deleted_builds))
-        with open("build_num_changes.txt", "w") as f_changes:
-            for config in same_config_builds:
-                if len(same_config_builds[config]) > 1:
-                    build_id = same_config_builds[config][0].instance.id
-                    build_name = same_config_builds[config][0].instance.build_name
-                    old_testcase_num = build_id_num[build_id]  # 获取第一个测试用例数量
-                    new_testcase_num = len(same_config_builds[config][0].get_all_testcases())
-                    testcase_num_change = new_testcase_num - old_testcase_num
-                    f_changes.write(
-                        f"Build Name: {build_name},Build Id: {build_id}, Old Num: {old_testcase_num}, New Num: {new_testcase_num}, Change: {testcase_num_change}\n")
+            # 合并，保留config name 最短的那个build TODO 需要完善，考虑夸版本的相同config的情况
+            new_builds = []
+            log_str = ""
+            for k, v in same_config_builds.items():
+                if len(v) == 1:
+                    new_builds.append(v[0])
+                    continue
+                v = sorted(v, key=lambda x: len(x.instance.build_name))
+                for sub_v in v:
+                    log_str += f"{sub_v.instance.build_name}: {len(sub_v.get_all_testcases())} \n"
+                for i in range(1, len(v)):
+                    v[0].testruns.extend(v[i].testruns)
+                log_str += f"combine {len(v)} builds to {v[0].instance.build_name}\n"
+                new_builds.append(v[0])
+            log_str += "after ===========\n"
+            ci_obj.builds = new_builds
+            ci_obj = CIAnalysis._combine_same_test_file_case([ci_obj])[0]
+            for build in ci_obj.builds:
+                log_str += f"{build.instance.build_name}: {len(build.get_all_testcases())} \n"
+            print(log_str)
         return ci_objs
 
     def assert_all_test_file_exists(self):
