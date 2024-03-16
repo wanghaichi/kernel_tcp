@@ -34,7 +34,7 @@ class CIAnalysis:
     def get_all_testcases(self) -> List['Test']:
         return [test_case for ci_obj in self.ci_objs for test_case in ci_obj.get_all_testcases()]
 
-    def load_db_instances(self,  db_instances):
+    def load_db_instances(self, db_instances):
         def _load_db_instances_parallel(db_instances):
             temp = []
             for db_instance in db_instances:
@@ -145,7 +145,7 @@ class CIAnalysis:
                             temp.append(test_case)
                     testrun.tests = temp
         return ci_objs
-    
+
     @staticmethod
     def _filter_no_sh_cases(ci_objs):
         for ci_obj in ci_objs:
@@ -157,10 +157,10 @@ class CIAnalysis:
                             temp.append(test_case)
                     testrun.tests = temp
         return ci_objs
-    
+
     @staticmethod
     def _filter_fail_cases_in_last_version(ci_objs):
-        
+
         fail_case_dict_list = []
         for ci_obj in ci_objs:
             fail_cases_dict = defaultdict(list)
@@ -168,7 +168,7 @@ class CIAnalysis:
                 fail_case_in_last_version = {}
                 if len(fail_case_dict_list) > 0:
                     fail_case_in_last_version = fail_case_dict_list[-1]
-                
+
                 for testrun in build.testruns:
                     temp = []
                     for test_case in testrun.tests:
@@ -183,9 +183,8 @@ class CIAnalysis:
                             temp.append(test_case)
                     testrun.tests = temp
             fail_case_dict_list.append(fail_cases_dict)
-        
-        return ci_objs
 
+        return ci_objs
 
     @staticmethod
     def _filter_no_file_test_cases(ci_objs):
@@ -194,7 +193,8 @@ class CIAnalysis:
                 for testrun in build.testruns:
                     temp = []
                     for test_case in testrun.tests:
-                        if test_case.map_test() and Path(test_case.file_path).exists() and Path(test_case.file_path).is_file():
+                        if test_case.map_test() and Path(test_case.file_path).exists() and Path(
+                                test_case.file_path).is_file():
                             temp.append(test_case)
                         # else:
                         #     if "login" in test_case.test_path or "speculative" in test_case.test_path:
@@ -254,36 +254,36 @@ class CIAnalysis:
                         temp.append(testcase)
                     testrun.tests = temp
         return ci_objs
-    
+
     @staticmethod
     def _combine_same_config_(ci_objs: List['Checkout']):
-        same_config_builds={}
+        same_config_builds = {}
         for ci_obj in ci_objs:
             for build in ci_obj.builds:
-                config=build.instance.kconfig
-                if isinstance(config,list):
-                    config_key=tuple(sorted(config))
+                config = build.instance.kconfig
+                if isinstance(config, list):
+                    config_key = tuple(sorted(config))
                 else:
-                    config_key=tuple(sorted(config.split()))
+                    config_key = tuple(sorted(config.split()))
                 if config_key in same_config_builds:
                     same_config_builds[config_key].append(build)
                 else:
-                    same_config_builds[config_key]=[build]
+                    same_config_builds[config_key] = [build]
         for config_key, builds_list in same_config_builds.items():
             if len(builds_list) > 1:
                 print("Same kconfig builds found:")
                 for build in builds_list:
-                    print(f"Build ID: {build.instance.id}")  
+                    print(f"Build ID: {build.instance.id}")
         for builds_list in same_config_builds.values():
-            merged_tests=[]
+            merged_tests = []
             for build in builds_list:
                 for testrun in build.testruns:
                     merged_tests.extend(testrun.tests)
 
-            merged_tests=list(set(merged_tests))
+            merged_tests = list(set(merged_tests))
             for build in builds_list:
                 for testrun in build.testruns:
-                    testrun.tests=merged_tests
+                    testrun.tests = merged_tests
         return ci_objs
 
     def assert_all_test_file_exists(self):
@@ -319,7 +319,8 @@ class CIAnalysis:
             job_func = self._filter_unknown_test_cases
 
         if job_task == "FILTER_CASE_BY_TYPE":
-            logger.debug(f"filter {kwargs['case_type']} test cases job start. Threads number: {self.number_of_threads}.")
+            logger.debug(
+                f"filter {kwargs['case_type']} test cases job start. Threads number: {self.number_of_threads}.")
             self.used_type(kwargs['case_type'])
             job_func = self._filter_test_cases_by_type
 
