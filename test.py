@@ -23,7 +23,8 @@ if __name__ == '__main__':
     cia.filter_job("COMBINE_SAME_CASE")
     cia.filter_job("FILTER_FAIL_CASES_IN_LAST_VERSION")
     cia.filter_job("COMBINE_SAME_CONFIG")
-    # cia.ci_objs = cia.ci_objs[1:]
+    cia.filter_job("COMBINE_SAME_CASE")
+
     cia.statistic_data()
 
     for ci_obj in cia.ci_objs:

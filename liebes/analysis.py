@@ -257,7 +257,11 @@ class CIAnalysis:
 
     @staticmethod
     def _combine_same_config_(ci_objs: List['Checkout']):
-        same_config_builds = {}
+
+        same_config_builds = {}  # 以config为键，用于存放config相同的build
+        combine_build = []  # 用于存储合并后的build_id
+        build_id_num = {}  # 希望以build_id为键，对应第一个build合并前的数据
+        deleted_builds = []  # 记录删除掉重复的build
         for ci_obj in ci_objs:
             for build in ci_obj.builds:
                 config = build.instance.kconfig
@@ -265,25 +269,29 @@ class CIAnalysis:
                     config_key = tuple(sorted(config))
                 else:
                     config_key = tuple(sorted(config.split()))
-                if config_key in same_config_builds:
+                if config_key in same_config_builds:  # 如果找到config重复的build
+                    combine_build.append(same_config_builds[config_key][0].instance.id)
                     same_config_builds[config_key].append(build)
+                    print(f"Same kconfig builds found:Build ID: {build.instance.id}")
+                    deleted_builds.append(build.instance.id)  # 记录重复的build_id
+                    same_config_builds[config_key][0].testruns.extend(build.testruns)  # 合并操作
+                    ci_obj.builds.remove(build)  # 去掉多余的builds
                 else:
                     same_config_builds[config_key] = [build]
-        for config_key, builds_list in same_config_builds.items():
-            if len(builds_list) > 1:
-                print("Same kconfig builds found:")
-                for build in builds_list:
-                    print(f"Build ID: {build.instance.id}")
-        for builds_list in same_config_builds.values():
-            merged_tests = []
-            for build in builds_list:
-                for testrun in build.testruns:
-                    merged_tests.extend(testrun.tests)
-
-            merged_tests = list(set(merged_tests))
-            for build in builds_list:
-                for testrun in build.testruns:
-                    testrun.tests = merged_tests
+                    build_id_num[build.instance.id] = [len(build.get_all_testcases())]  # 记录合并build的初始test数量
+        deleted_builds = [str(build_id) for build_id in deleted_builds]
+        with open("deleted_builds.txt", "w") as f_deleted:
+            f_deleted.write("\n".join(deleted_builds))
+        with open("build_num_changes.txt", "w") as f_changes:
+            for config in same_config_builds:
+                if len(same_config_builds[config]) > 1:
+                    build_id = same_config_builds[config][0].instance.id
+                    build_name = same_config_builds[config][0].instance.build_name
+                    old_testcase_num = build_id_num[build_id]  # 获取第一个测试用例数量
+                    new_testcase_num = len(same_config_builds[config][0].get_all_testcases())
+                    testcase_num_change = new_testcase_num - old_testcase_num
+                    f_changes.write(
+                        f"Build Name: {build_name},Build Id: {build_id}, Old Num: {old_testcase_num}, New Num: {new_testcase_num}, Change: {testcase_num_change}\n")
         return ci_objs
 
     def assert_all_test_file_exists(self):
