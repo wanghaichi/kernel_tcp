@@ -298,6 +298,40 @@ class CIAnalysis:
                 log_str += f"{build.instance.build_name}: {len(build.get_all_testcases())} \n"
             print(log_str)
         return ci_objs
+    
+    @staticmethod
+    def _good_config_(ci_objs: List['Checkout']):
+        common_kconfigs = {}  # 以kconfig为键，用于存放共同的kconfig及其统计信息
+        kconfig_build = {}  # 记录相同kconfig对应的build
+    # 统计每个ci_obj中的kconfig信息
+        for ci_obj in ci_objs:
+            for build in ci_obj.builds:                         
+                config = build.instance.kconfig
+                if isinstance(config, list):
+                    config_key = tuple(sorted(config))
+                else:
+                    config_key = tuple(sorted(config.split()))
+                kconfig_build.setdefault(config_key, []).append(build)
+            # 找到共同的kconfig，并记录对应的checkout和testcase数量
+                #元组的第一个元素表示该共同的 kconfig 出现在多少个不同的 checkout 中，初始值为 0。
+                #元组的第二个元素是一个空列表，用于存储该共同的 kconfig 在哪些 checkout 中出现以及每个 checkout 对应的 testcase 数量。
+        for kconfig, build_list in kconfig_build.items():
+            if kconfig not in common_kconfigs:
+                common_kconfigs[kconfig] = ([])
+            for build in build_list:
+                total_testcases = len(build.get_all_testcases())
+                common_kconfigs[kconfig].append((build.instance.build_name, build.instance.checkout_id, total_testcases))
+                
+        with open("good config.txt", 'w') as file:
+            for kconfig, info_list in common_kconfigs.items():
+                file.write(f"KConfig: {kconfig}\n")
+                for info in info_list:
+                    build_name, checkout_id, testcase_count = info
+                    file.write(f"  Build Name: {build_name}\n")
+                    file.write(f"  Checkout ID: {checkout_id}\n")
+                    file.write(f"  Testcase Count: {testcase_count}\n")
+                file.write("\n")
+        return ci_objs
 
     def assert_all_test_file_exists(self):
         flag = True
@@ -353,6 +387,9 @@ class CIAnalysis:
         if job_task == "COMBINE_SAME_CONFIG":
             logger.debug(f"combine same config job start. Threads number: {self.number_of_threads}.")
             job_func = self._combine_same_config_
+        if job_task == "FIND_GOOD_CONFIG":
+            logger.debug(f"find  good config job start. Threads number: {self.number_of_threads}.")
+            job_func = self._good_config_
 
         if job_task == "FILTER_NO_C_CASE":
             job_func = self._filter_no_c_cases
