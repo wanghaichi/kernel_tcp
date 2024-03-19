@@ -1,11 +1,6 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from liebes.CiObjects import DBCheckout, Checkout
-from liebes.analysis import CIAnalysis, load_cia
-from liebes.GitHelper import GitHelper
-from sqlalchemy import and_, or_
-from sqlalchemy import text
 from liebes.ci_logger import settings
 
 

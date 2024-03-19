@@ -122,7 +122,13 @@ def get_distance_map(test_cases: list[Test], distance_metric: str):
 
     
 
+from liebes.tcp_approach.metric_manager import DistanceMetric
+distance_map = {}
+
 def ARP(test_cases: list[Test], k: int, distance_metric: str, candidate_stragety: str):
+
+    dm = DistanceMetric()
+
     if distance_metric is None:
         distance_metric = 'edit_distance'
     if candidate_stragety is None:
@@ -153,16 +159,19 @@ def ARP(test_cases: list[Test], k: int, distance_metric: str, candidate_stragety
                 if distance is None:
                     distance = distance_global_map.get(candidate.file_path, {}).get(pt.file_path, None)
                 if distance is None:
+                    # if Path(candidate.file_path).is_dir():
+                    #     print(candidate.instance.id, candidate.file_path, candidate.instance.path)
                     candidate_text = Path(candidate.file_path).read_text(encoding='utf-8', errors='ignore')
                     pt_text = Path(pt.file_path).read_text(encoding='utf-8', errors='ignore')
                     if distance_metric == 'edit_distance':
-                        distance = edit_distance(candidate_text, pt_text)
+                        distance = dm.edit_distance(candidate_text, pt_text)
                     elif distance_metric == 'hanming_distance':
                         distance = hanming_distance(candidate_text, pt_text)
                     elif distance_metric == 'euclidean_string_distance':
                         distance = euclidean_string_distance(candidate_text, pt_text)
                     elif distance_metric == 'manhattan_string_distance':
                         distance = manhattan_string_distance(candidate_text, pt_text)
+                        distance = dm.hanming_distance(candidate_text, pt_text)
 
                     tmp_dict = distance_global_map.get(pt.file_path, {})
                     tmp_dict[candidate.file_path] = distance
@@ -171,12 +180,12 @@ def ARP(test_cases: list[Test], k: int, distance_metric: str, candidate_stragety
                 d[row][col] = distance
                 row += 1
             col += 1
-        
+
         if candidate_stragety == 'min_max':
             neighbours = list(np.min(d, axis=0))
             max_idx = neighbours.index(max(neighbours))
             next_pt_idx = candidate_list[max_idx]
-        
+
         prioritized_list.append(next_pt_idx)
         idx_list.remove(next_pt_idx)
         # print(idx_list_len)
@@ -187,7 +196,10 @@ def ARP(test_cases: list[Test], k: int, distance_metric: str, candidate_stragety
         with open(map_file, r'w') as f:
             json.dump([distance_global_map], f, indent=4)
         f.close()
+        # print(idx_list_len)
+
     return prioritized_list
+
 
 def do_exp(cia: CIAnalysis, k: int, distance_metric: str, candidate_stragety: str):
     ehelper = EHelper()

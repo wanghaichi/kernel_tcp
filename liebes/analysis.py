@@ -2,9 +2,8 @@ import pickle
 from pathlib import Path
 from typing import List
 
-from pqdm.threads import pqdm
 from tqdm import tqdm
-
+from pqdm.threads import pqdm
 from liebes.CiObjects import Checkout, Test, TestCaseType
 from collections import defaultdict
 from liebes.ci_logger import logger
@@ -35,7 +34,7 @@ class CIAnalysis:
     def get_all_testcases(self) -> List['Test']:
         return [test_case for ci_obj in self.ci_objs for test_case in ci_obj.get_all_testcases()]
 
-    def load_db_instances(self,  db_instances):
+    def load_db_instances(self, db_instances):
         def _load_db_instances_parallel(db_instances):
             temp = []
             for db_instance in db_instances:
@@ -105,13 +104,20 @@ class CIAnalysis:
     #     after_branch = len(self.ci_objs)
     #     logger.debug(f"filter {before_branch - after_branch} branches, reduce test_cases from {before} to {after}")
 
-    def statistic_data(self):
+    def statistic_data(self, build_name=None):
         self.reorder()
         total_c = 0
         total_sh = 0
         total_py = 0
+
         for ci_obj in self.ci_objs:
             test_cases = ci_obj.get_all_testcases()
+            if build_name is not None:
+                test_cases = []
+                for b in ci_obj.builds:
+                    if b.instance.build_name == build_name:
+                        test_cases = b.get_all_testcases()
+                        break
             if len(test_cases) < 500:
                 continue
             l1 = len([x for x in test_cases if x.is_failed()])
@@ -124,7 +130,9 @@ class CIAnalysis:
             logger.info(
                 f"{ci_obj.instance.git_sha}/{ci_obj.instance.git_repo_branch}: {l1} failed / {len(test_cases)} total. Unique test path count: {len(path_set)}. "
                 f"Unique file path count: {len(file_set)}. "
-                f"C: {c_count}, SH: {sh_count}, PY: {py_count}")
+                f"C: {c_count}, SH: {sh_count}, PY: {py_count}"
+                f"Total builds: {len(ci_obj.builds)}"
+            )
             total_c += c_count
             total_sh += sh_count
             total_py += py_count
@@ -146,7 +154,7 @@ class CIAnalysis:
                             temp.append(test_case)
                     testrun.tests = temp
         return ci_objs
-    
+
     @staticmethod
     def _filter_no_sh_cases(ci_objs):
         for ci_obj in ci_objs:
@@ -158,32 +166,25 @@ class CIAnalysis:
                             temp.append(test_case)
                     testrun.tests = temp
         return ci_objs
-    
-    @staticmethod
-    def _filter_fail_cases_in_last_version(ci_objs):
-        
-        fail_case_dict_list = []
-        for ci_obj in ci_objs:
-            fail_cases_dict = defaultdict(list)
+
+    def filter_fail_cases_in_last_version(self):
+        # 每个版本只考虑一个build
+        case_status = {}
+        for ci_obj in self.ci_objs:
             for build in ci_obj.builds:
-                fail_case_in_last_version = {}
-                if len(fail_case_dict_list) > 0:
-                    fail_case_in_last_version = fail_case_dict_list[-1]
-                
                 for testrun in build.testruns:
                     temp = []
                     for test_case in testrun.tests:
-                        if test_case.status == 1:
-                            fail_cases_dict[build.instance.build_name].append(test_case.file_path)
-                            if test_case.file_path not in fail_case_in_last_version.get(build.instance.build_name, []):
-                                temp.append(test_case)
+                        if test_case.is_failed():
+                            if case_status.get(test_case.file_path, False):
+                                continue
+                            else:
+                                case_status[test_case.file_path] = True
                         else:
-                            temp.append(test_case)
+                            case_status[test_case.file_path] = False
+                        temp.append(test_case)
                     testrun.tests = temp
-            fail_case_dict_list.append(fail_cases_dict)
-        
-        return ci_objs
-
+        return
 
     @staticmethod
     def _filter_no_file_test_cases(ci_objs):
@@ -192,7 +193,8 @@ class CIAnalysis:
                 for testrun in build.testruns:
                     temp = []
                     for test_case in testrun.tests:
-                        if test_case.map_test() and Path(test_case.file_path).exists() and test_case.file_path != '':
+                        # if test_case.map_test() and Path(test_case.file_path).exists() and test_case.file_path != '':
+                        if test_case.map_test() and Path(test_case.file_path).exists() and Path(test_case.file_path).is_file():
                             temp.append(test_case)
                         # else:
                         #     if "login" in test_case.test_path or "speculative" in test_case.test_path:
@@ -225,11 +227,16 @@ class CIAnalysis:
             self._used_type = type_list
         return self._used_type
 
-    def filter_branches_with_few_testcases(self, minimal_testcases=20):
+    def filter_branches_and_builds_with_few_testcases(self, minimal_testcases=20):
         before = len(self.get_all_testcases())
         before_branch = len(self.ci_objs)
         temp_obj = []
         for ci_obj in self.ci_objs:
+            temp_builds = []
+            for build in ci_obj.builds:
+                if len(build.get_all_testcases()) > minimal_testcases:
+                    temp_builds.append(build)
+            ci_obj.builds = temp_builds
             if len(ci_obj.get_all_testcases()) >= minimal_testcases:
                 temp_obj.append(ci_obj)
         self.ci_objs = temp_obj
@@ -245,18 +252,86 @@ class CIAnalysis:
                 for testrun in build.testruns:
                     temp = []
                     for testcase in testrun.tests:
+                        if testcase.file_path is None or testcase.file_path.strip() == "":
+                            continue
                         if testcase.file_path in status_m.keys():
                             status_m[testcase.file_path].merge_status(testcase)
                             continue
                         status_m[testcase.file_path] = testcase
                         temp.append(testcase)
                     testrun.tests = temp
+        return ci_objs
 
-            # update statusA
-            # for build in ci_obj.builds:
-            #     for testrun in build.testruns:
-            #         for i in range(len(testrun.tests)):
-            #             testrun.tests[i].merge_status(status_m[testrun.tests[i].file_path])
+    @staticmethod
+    def _combine_same_config_(ci_objs: List['Checkout']):
+        for ci_obj in ci_objs:
+            same_config_builds = {}  # 以config为键，用于存放config相同的build
+            for build in ci_obj.builds:
+                config = build.instance.kconfig
+                # print(config)
+                if isinstance(config, list):
+                    config_key = tuple(sorted(config))
+                else:
+                    config_key = tuple(sorted(config.split()))
+                if config_key in same_config_builds:  # 如果找到config重复的build
+                    same_config_builds[config_key].append(build)
+                else:
+                    same_config_builds[config_key] = [build]
+            # 合并，保留config name 最短的那个build TODO 需要完善，考虑夸版本的相同config的情况
+            new_builds = []
+            log_str = ""
+            for k, v in same_config_builds.items():
+                if len(v) == 1:
+                    new_builds.append(v[0])
+                    continue
+                v = sorted(v, key=lambda x: len(x.instance.build_name))
+                for sub_v in v:
+                    log_str += f"{sub_v.instance.build_name}: {len(sub_v.get_all_testcases())} \n"
+                for i in range(1, len(v)):
+                    v[0].testruns.extend(v[i].testruns)
+                    v[0].previous_build_names.add(v[i].instance.build_name)
+                log_str += f"combine {len(v)} builds to {v[0].instance.build_name}\n"
+                new_builds.append(v[0])
+            log_str += "after ===========\n"
+            ci_obj.builds = new_builds
+            ci_obj = CIAnalysis._combine_same_test_file_case([ci_obj])[0]
+            for build in ci_obj.builds:
+                log_str += f"{build.instance.build_name}: {len(build.get_all_testcases())} \n"
+            # print(log_str)
+        return ci_objs
+    
+    @staticmethod
+    def _good_config_(ci_objs: List['Checkout']):
+        common_kconfigs = {}  # 以kconfig为键，用于存放共同的kconfig及其统计信息
+        kconfig_build = {}  # 记录相同kconfig对应的build
+    # 统计每个ci_obj中的kconfig信息
+        for ci_obj in ci_objs:
+            for build in ci_obj.builds:                         
+                config = build.instance.kconfig
+                if isinstance(config, list):
+                    config_key = tuple(sorted(config))
+                else:
+                    config_key = tuple(sorted(config.split()))
+                kconfig_build.setdefault(config_key, []).append(build)
+            # 找到共同的kconfig，并记录对应的checkout和testcase数量
+                #元组的第一个元素表示该共同的 kconfig 出现在多少个不同的 checkout 中，初始值为 0。
+                #元组的第二个元素是一个空列表，用于存储该共同的 kconfig 在哪些 checkout 中出现以及每个 checkout 对应的 testcase 数量。
+        for kconfig, build_list in kconfig_build.items():
+            if kconfig not in common_kconfigs:
+                common_kconfigs[kconfig] = ([])
+            for build in build_list:
+                total_testcases = len(build.get_all_testcases())
+                common_kconfigs[kconfig].append((build.instance.build_name, build.instance.checkout_id, total_testcases))
+                
+        with open("good config.txt", 'w') as file:
+            for kconfig, info_list in common_kconfigs.items():
+                file.write(f"KConfig: {kconfig}\n")
+                for info in info_list:
+                    build_name, checkout_id, testcase_count = info
+                    file.write(f"  Build Name: {build_name}\n")
+                    file.write(f"  Checkout ID: {checkout_id}\n")
+                    file.write(f"  Testcase Count: {testcase_count}\n")
+                file.write("\n")
         return ci_objs
     
 
@@ -284,6 +359,35 @@ class CIAnalysis:
                    desc="map files", leave=False)
         logger.debug("done")
 
+    def choose_one_build(self):
+        count_in_each_version = {}
+        total_test_cases = {}
+        k_name = {}
+        for ci_obj in self.ci_objs:
+            for b in ci_obj.builds:
+                config = b.instance.kconfig
+                # print(config)
+                if isinstance(config, list):
+                    config_key = tuple(sorted(config))
+                else:
+                    config_key = tuple(sorted(config.split()))
+                if config_key not in k_name.keys():
+                    k_name[config_key] = b.instance.build_name
+                b.build_name = k_name[config_key]
+                if config_key not in count_in_each_version.keys():
+                    count_in_each_version[config_key] = 1
+                    total_test_cases[config_key] = len(b.get_all_testcases())
+                else:
+                    count_in_each_version[config_key] += 1
+                    total_test_cases[config_key] += len(b.get_all_testcases())
+        l = []
+        for k, v in count_in_each_version.items():
+            l.append((v, total_test_cases[k] / v, k_name[k]))
+        l = sorted(l, key=lambda x: x[0], reverse=True)
+        print(f"select {l[0][1]} as build name with {l[0][1]} test cases per build, total {l[0][0]} builds.")
+        self.select(l[0][2])
+        # print(v, total_test_cases[k], total_test_cases[k] / v, k_name[k], k)
+
     def filter_job(self, job_task: str, *args, **kwargs):
         arguments = [self.ci_objs[i:i + self.execution_number_per_thread] for i in
                      range(0, len(self.ci_objs), self.execution_number_per_thread)]
@@ -293,7 +397,8 @@ class CIAnalysis:
             job_func = self._filter_unknown_test_cases
 
         if job_task == "FILTER_CASE_BY_TYPE":
-            logger.debug(f"filter {kwargs['case_type']} test cases job start. Threads number: {self.number_of_threads}.")
+            logger.debug(
+                f"filter {kwargs['case_type']} test cases job start. Threads number: {self.number_of_threads}.")
             self.used_type(kwargs['case_type'])
             job_func = self._filter_test_cases_by_type
 
@@ -310,14 +415,18 @@ class CIAnalysis:
             _ = self.test_case_status_map
             job_func = self.filter_always_failed_test_cases
 
+        if job_task == "COMBINE_SAME_CONFIG":
+            logger.debug(f"combine same config job start. Threads number: {self.number_of_threads}.")
+            job_func = self._combine_same_config_
+        if job_task == "FIND_GOOD_CONFIG":
+            logger.debug(f"find  good config job start. Threads number: {self.number_of_threads}.")
+            job_func = self._good_config_
+
         if job_task == "FILTER_NO_C_CASE":
             job_func = self._filter_no_c_cases
 
         if job_task == "FILTER_NO_SH_CASE":
             job_func = self._filter_no_sh_cases
-
-        if job_task == "FILTER_FAIL_CASES_IN_LAST_VERSION":
-            job_func = self._filter_fail_cases_in_last_version
 
         if job_func is not None:
             before = len(self.get_all_testcases())
@@ -332,8 +441,14 @@ class CIAnalysis:
 
         if job_task == "FILTER_SMALL_BRANCH":
             logger.debug(
-                f"filter branches with small cases (less than{kwargs['minimal_testcases']}) job start. Threads number: {self.number_of_threads}.")
-            self.filter_branches_with_few_testcases(minimal_testcases=kwargs['minimal_testcases'])
+                f"filter branches and builds with few cases (less than{kwargs['minimal_testcases']}) job start.")
+            self.filter_branches_and_builds_with_few_testcases(minimal_testcases=kwargs['minimal_testcases'])
+
+        if job_task == "FILTER_FAIL_CASES_IN_LAST_VERSION":
+            self.filter_fail_cases_in_last_version()
+
+        if job_task == "CHOOSE_ONE_BUILD":
+            self.choose_one_build()
 
 
 def load_cia(file_path) -> 'CIAnalysis':

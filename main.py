@@ -13,7 +13,7 @@ import tree_sitter
 from tree_sitter import Language, Parser
 import difflib
 import subprocess
-
+import numpy as np
 
 class TestCaseInfo:
     def __init__(self):
@@ -34,6 +34,7 @@ def do_exp(cia: CIAnalysis, tokenizer: BaseTokenizer, ir_model: BaseModel, conte
     else:
         m = {}
     apfd_res = []
+    apfd_seperate = []
     for ci_index in range(1, len(cia.ci_objs)):
         ci_obj = cia.ci_objs[ci_index]
         if gitHelper.get_commit_info(ci_obj.instance.git_sha) is None:
@@ -70,7 +71,6 @@ def do_exp(cia: CIAnalysis, tokenizer: BaseTokenizer, ir_model: BaseModel, conte
                     # print(e)
                     # print(t.file_path)
                     tokens = []
-                    # continue
                 v = " ".join(tokens)
                 v = v.lower()
                 token_arr.append(v)
@@ -93,14 +93,44 @@ def do_exp(cia: CIAnalysis, tokenizer: BaseTokenizer, ir_model: BaseModel, conte
         apfd_v = ehelper.APFD(faults_arr, order_arr)
         logger.debug(f"model: {ir_model.name}, commit: {ci_obj.instance.git_sha}, apfd: {apfd_v}")
         apfd_res.append(apfd_v)
-    logger.info(f"model: {ir_model.name}, avg apfd: {np.average(apfd_res)}")
-    return f"model: {ir_model.name}, avg apfd: {np.average(apfd_res)}"
+        logger.debug("faults test cases file path")
+        for fi in faults_arr:
+            logger.debug(f"{test_cases[fi].file_path}, {order_arr[fi]}")
+        logger.debug("code changes")
+        for c in code_changes:
+            logger.debug(c)
+
+        # calculate the results for sh, and c files
+        faults_c = []
+        faults_sh = []
+        for f_i in faults_arr:
+            if test_cases[f_i].type == TestCaseType.C:
+                faults_c.append(f_i)
+            elif test_cases[f_i].type == TestCaseType.SH:
+                faults_sh.append(f_i)
+        order_arr_c = []
+        order_arr_sh = []
+        for i in range(len(order_arr)):
+            o_i = order_arr[i]
+            if test_cases[o_i].type == TestCaseType.C:
+                order_arr_c.append(o_i)
+            elif test_cases[o_i].type == TestCaseType.SH:
+                order_arr_sh.append(o_i)
+        apfd_v_c = ehelper.APFD(faults_c, order_arr_c)
+        apfd_v_sh = ehelper.APFD(faults_sh, order_arr_sh)
+        logger.debug(f"model: {ir_model.name}, commit: {ci_obj.instance.git_sha}, apfd_c: {apfd_v_c}")
+        logger.debug(f"model: {ir_model.name}, commit: {ci_obj.instance.git_sha}, apfd_sh: {apfd_v_sh}")
+        apfd_seperate.append((apfd_v_c, apfd_v_sh))
+
+    logger.info(f"model: {ir_model.name}, avg apfd: {np.average(apfd_res)}, apfd_c: {np.average([x[0] for x in apfd_seperate])}, apfd_sh: {np.average([x[1] for x in apfd_seperate])}")
+    return f"model: {ir_model.name}, avg apfd: {np.average(apfd_res)}, apfd_c: {np.average([x[0] for x in apfd_seperate])}, apfd_sh: {np.average([x[1] for x in apfd_seperate])}"
 
 
 if __name__ == '__main__':
     linux_path = '/home/wanghaichi/linux-1'
     sql = SQLHelper()
     start_time = datetime.now()
+
     checkouts = sql.session.query(DBCheckout).order_by(DBCheckout.git_commit_datetime.desc()).limit(20).all()
     cia = CIAnalysis()
     for ch in checkouts:
@@ -109,7 +139,7 @@ if __name__ == '__main__':
     cia.set_parallel_number(40)
     cia.filter_job("COMBINE_SAME_CASE")
     cia.filter_job("FILTER_FAIL_CASES_IN_LAST_VERSION")
-    cia.ci_objs = cia.ci_objs[1:]
+    # cia.ci_objs = cia.ci_objs[1:]
     cia.statistic_data()
     repo = Repo(linux_path)
     for idx in range(len(cia.ci_objs) - 1):

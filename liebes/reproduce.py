@@ -7,23 +7,29 @@ from liebes.CiObjects import DBConfig
 from liebes.sql_helper import SQLHelper
 import pexpect
 import shutil
+import atexit
 
 
 class ReproUtil:
-    def __init__(self, home_dir, fs_image_root, port, linux_dir):
+    def __init__(self, home_dir, fs_image_root, port, linux_dir, ltp_dir, pid_index=0, vm_mem=10):
         self.home_dir = home_dir
         self.kernel_image_path = None
         self.work_linux_dir = None
         self.fs_image_root = self.home_dir + "/" + fs_image_root
-
         self.fs_image_path = self.fs_image_root + "/bullseye.img"
         self.ssh_key = self.fs_image_root + "/bullseye.id_rsa"
-
+        self.pid_index = pid_index
+        self.pid_file = self.home_dir + f"/vm_{pid_index}.pid"
         self.vm_port = port
         # for copy only
         self.base_linux_dir = self.home_dir + "/" + linux_dir
 
         self.result_dir = None
+        self.ltp_dir = self.home_dir + "/" + ltp_dir
+        self.ltp_bin = None
+        self.vm_mem = vm_mem
+        self.vm_bin = "/root/ltp_bin"
+        self.qemu_process = None
         pass
 
     def run_command(self, cmd, cwd=None):
@@ -35,6 +41,85 @@ class ReproUtil:
             print("execute command failed: ", cmd)
             print("error message: ", result.stderr)
         return result
+
+    def prepare_ltp_binary(self, git_sha):
+        # step0. update ltp to the latest version
+        # cmd = "git pull origin master"
+        # if self.run_command(cmd, self.ltp_dir).returncode != 0:
+        #     return False
+
+        # step1. checkout ltp to the specific git sha
+
+        work_ltp_dir = Path(f"{self.home_dir}/repro_ltps/{git_sha}")
+        # TODO check if it is already exist
+        if work_ltp_dir.exists() and (work_ltp_dir / "build").exists():
+            self.ltp_bin = work_ltp_dir / "build"
+            print("ltp bin is located at ", self.ltp_bin)
+            return True
+        # work_ltp_dir.mkdir(parents=True)
+        cmd = f"cp -r {self.ltp_dir} {work_ltp_dir}"
+        if self.run_command(cmd).returncode != 0:
+            return False
+        cmd = "git clean -df && git checkout " + git_sha + " && git clean -df"
+        if self.run_command(cmd, work_ltp_dir).returncode != 0:
+            return False
+        # step2. make whole ltp into binary, the location of the binary is ./build
+        cmd = f"make autotools && mkdir build && ./configure --prefix={work_ltp_dir / 'build'}"
+        if self.run_command(cmd, work_ltp_dir).returncode != 0:
+            return False
+        cmd = f"make -k -j`nproc` && make -k install"
+        if self.run_command(cmd, work_ltp_dir).returncode != 0:
+            return False
+        self.ltp_bin = work_ltp_dir / "build"
+        print("ltp bin is located at ", work_ltp_dir / "build")
+        return True
+
+    def copy_ltp_bin_to_vm(self):
+        cmd = f"rm -rf {self.vm_bin}"
+        if self.execute_cmd_in_qemu(cmd).returncode != 0:
+            return False
+        cmd = f"scp -i {self.ssh_key} -P {self.vm_port} -o \"StrictHostKeyChecking no\" -r {self.ltp_bin} root@localhost:/root/ltp_bin"
+        if self.run_command(cmd).returncode != 0:
+            return False
+
+        # copy kernel config
+        cmd = f"scp -i {self.ssh_key} -P {self.vm_port} -o \"StrictHostKeyChecking no\" -r {self.work_linux_dir}/.config root@localhost:/root/config"
+        if self.run_command(cmd).returncode != 0:
+            return False
+
+        cmd = f"gzip -f config "
+        if self.execute_cmd_in_qemu(cmd).returncode != 0:
+            return False
+
+        # copy coverage collecting script to vm
+        shell_content = f'''#!/bin/bash -e
+
+DEST=$1
+GCDA=/sys/kernel/debug/gcov{self.work_linux_dir}
+
+if [ -z "$DEST" ] ; then
+    echo "Usage: $0 <output.tar.gz>" >&2
+    exit 1
+fi
+
+TEMPDIR=$(mktemp -d)
+echo Collecting data..
+find $GCDA -type d -exec mkdir -p $TEMPDIR/\\{{\\}} \\;
+find $GCDA -name '*.gcda' -exec sh -c 'cat < $0 > '$TEMPDIR'/$0' {{}} \\;
+# find $GCDA -name '*.gcno' -exec sh -c 'cp -d $0 '$TEMPDIR'/$0' {{}} \\;
+tar czf $DEST -C $TEMPDIR/$GCDA .
+rm -rf $TEMPDIR
+
+echo "$DEST successfully created, copy to build system and unpack with:"
+echo "  tar xfz $DEST "
+        '''
+        script_file = Path(self.work_linux_dir) / "collect_coverage.sh"
+        script_file.write_text(shell_content)
+        script_file.chmod(0o755)
+        cmd = f"scp -i {self.ssh_key} -P {self.vm_port} -o \"StrictHostKeyChecking no\" {script_file.absolute()} root@localhost:/root/collect_coverage.sh"
+        if self.run_command(cmd).returncode != 0:
+            return False
+        return True
 
     def prepare_linux_image(self, git_sha, base_config, extra_config, renew=False):
         work_linux_dir = Path(f"{self.home_dir}/repro_linuxs/{git_sha}")
@@ -84,11 +169,20 @@ class ReproUtil:
         image_path = f"{work_linux_dir}/arch/x86/boot/bzImage"
         if not Path(image_path).exists():
             return False
+        cmd = f"ssh-keygen -R [localhost]:{self.vm_port}"
+        self.run_command(cmd)
         return True
 
     def start_qemu(self):
+        # kill the previous qemu process if exists
+        if Path(self.pid_file).exists():
+            pid = Path(self.pid_file).read_text().strip()
+            cmd = f"kill -9 {pid}"
+            self.run_command(cmd)
+            Path(self.pid_file).unlink()
+
         cmd = f'qemu-system-x86_64 \
-        -m 2G \
+        -m {self.vm_mem}G \
         -smp 2 \
         -kernel {self.kernel_image_path} \
         -append "console=ttyS0 root=/dev/sda earlyprintk=serial net.ifnames=0" \
@@ -97,32 +191,70 @@ class ReproUtil:
         -net nic,model=e1000 \
         -enable-kvm \
         -nographic \
-        -pidfile vm.pid \
-        2>&1 | tee vm.log'
+        -pidfile {self.pid_file} \
+        2>&1 | tee vm_{self.pid_index}.log'
         print(cmd)
         vm_log_file = Path(self.result_dir) / "vm.log"
         # qemu_process = subprocess.Popen(cmd, shell=True, text=True, stdout=vm_log_file.open("w"),
         #                                 stderr=vm_log_file.open("w"))
         qemu_process = subprocess.Popen(cmd, shell=True, text=True)
-        return qemu_process
+        self.qemu_process = qemu_process
+        return
 
     def execute_cmd_in_qemu(self, cmd):
         cmd = f'ssh -i {self.ssh_key} -p {self.vm_port} -o "StrictHostKeyChecking no" -t root@localhost "{cmd}"'
         res = self.run_command(cmd)
         return res
 
-    def execute_ltp_testcase(self, testcase_name, save_result=True):
-        cmd = f'cd /root/ltp_bin && ./runltp -s {testcase_name}'
+    def collect_coverage(self):
+        pass
+
+    def execute_ltp_testcase(self, testcase_name, timeout=30, save_result=True, collect_coverage=False):
+        if collect_coverage:
+            cmd = f'lcov -z'
+            res = self.execute_cmd_in_qemu(cmd)
+            if res.returncode != 0:
+                print("failed to reset lcov")
+                return
+        cmd = f'cd /root/ltp_bin && KCONFIG_PATH=/root/config.gz timeout {timeout}s ./runltp -s {testcase_name}'
         res = self.execute_cmd_in_qemu(cmd)
         if save_result:
             if res.returncode != 0:
-                result_file = Path(self.result_dir) / f"{testcase_name}.err"
-                result_file.write_text(res.stderr)
-                print("save err result to ", result_file)
+                if res.returncode == 124:
+                    print("timeout")
+                    result_file = Path(self.result_dir) / f"{testcase_name}.err"
+                    result_file.write_text(res.stdout + res.stderr)
+                    print("save err result to ", result_file)
+                else:
+                    result_file = Path(self.result_dir) / f"{testcase_name}.result"
+                    result_file.write_text(res.stdout + res.stderr)
+                    print("save fail result to ", result_file)
             else:
                 result_file = Path(self.result_dir) / f"{testcase_name}.result"
                 result_file.write_text(res.stdout)
                 print("save succ result to ", result_file)
+        if collect_coverage:
+            cmd = f'cd /root && ./collect_coverage.sh /root/{testcase_name}_coverage.tar.gz'
+            res = self.execute_cmd_in_qemu(cmd)
+            if res.returncode != 0:
+                print("failed to collect coverage")
+                return
+            cmd = (f'scp -i {self.ssh_key} -P {self.vm_port} -o "StrictHostKeyChecking no" root@localhost:/root/{testcase_name}_coverage.tar.gz {self.work_linux_dir}/{testcase_name}_coverage.tar.gz')
+            res = self.run_command(cmd)
+            if res.returncode != 0:
+                print("failed to copy coverage")
+                return
+            cmd = f"cd /root && rm -f /root/{testcase_name}_coverage.tar.gz"
+            self.execute_cmd_in_qemu(cmd)
+
+    def kill_qemu(self):
+        pid_file = Path(self.pid_file)
+        if pid_file.exists():
+            pid = pid_file.read_text().strip()
+            cmd = f"kill -9 {pid}"
+            self.run_command(cmd)
+            pid_file.unlink()
+
 
     def parse_result(self):
         pass
