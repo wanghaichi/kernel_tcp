@@ -181,6 +181,24 @@ class CallGraph:
                 top_func_set.add(cur_node)
         
         return top_func_set
+    
+    def get_all_call(self, root_name):
+        if root_name is None:
+            return set()
+        visited_set = set()
+        root_node = self.node_map.get(root_name)
+        if root_node is None:
+            return set()
+        stack = [root_node]
+
+        while stack:
+            cur_node = stack.pop()
+            if cur_node not in visited_set:
+                visited_set.add(cur_node)
+                stack.extend(cur_node.caller)
+        
+        return visited_set
+                
 
 
 class GraphNode:

@@ -1,18 +1,39 @@
-import requests
-from bs4 import BeautifulSoup
-import pickle
+import difflib
 
+# 旧代码文本
+old_code = """
+def foo():
+    print("Hello, world!")
 
-if __name__ == "__main__":
-    html = requests.get(r'https://man7.org/linux/man-pages/dir_section_2.html').text
-    soup = BeautifulSoup(html, 'lxml')
+def bar():
+    print("This is bar.")
+"""
 
-    func_list = []
-    table = soup.find_all('table')[1]
-    for td in table.find_all('td'):
-        for a in td.find_all('a'):
-            func_list.append(a.text.split('(')[0])
-    
-    with open(r'syscall_list', r'wb') as f:
-        pickle.dump(func_list, f)
-    f.close()
+# 新代码文本
+new_code = """
+def foo():
+    print("Hello, OpenAI!")
+
+def baz():
+    print("This is baz.")
+"""
+
+# 按行拆分旧代码和新代码
+old_lines = old_code.strip().splitlines()
+new_lines = new_code.strip().splitlines()
+
+# 比较旧代码和新代码的差异
+diff = difflib.ndiff(old_lines, new_lines)
+for line in diff:
+    print(line)
+
+# 提取修改的行号
+# changed_lines = []
+# for line in diff:
+#     if line.startswith('+') or line.startswith('-'):
+#         line_number = line[1:].split(',')[0].strip()
+#         changed_lines.append(int(line_number))
+
+# # 输出修改的行号
+# for line_number in changed_lines:
+#     print(f"Line {line_number} has been modified.")

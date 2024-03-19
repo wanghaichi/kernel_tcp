@@ -8,6 +8,11 @@ from liebes.analysis import CIAnalysis
 from liebes.ir_model import *
 from liebes.sql_helper import SQLHelper
 from liebes.tokenizer import *
+from git import Repo
+import tree_sitter
+from tree_sitter import Language, Parser
+import difflib
+import subprocess
 
 
 class TestCaseInfo:
@@ -106,23 +111,23 @@ if __name__ == '__main__':
     cia.filter_job("FILTER_FAIL_CASES_IN_LAST_VERSION")
     cia.ci_objs = cia.ci_objs[1:]
     cia.statistic_data()
-    tokenizers = [AstTokenizer()]
-    ir_models = [
-        TfIdfModel(),
-        LSIModel(num_topics=2),
-        LDAModel(num_topics=2),
-        Bm25Model(),
-    ]
-    context_strategy = "default"
-    # tokenizer = AstTokenizer()
-    # ir_model = TfIdfModel()
-    # TODO 加个多线程的方式
-    summary = []
-    for tokenizer in tokenizers:
-        for ir_model in ir_models:
-            res = do_exp(cia, tokenizer, ir_model, context_strategy)
-            summary.append(res)
-    logger.info("summary :---------------------------------")
-    logger.info(f"use strategy: {context_strategy}")
-    for s in summary:
-        logger.info(s)
+    repo = Repo(linux_path)
+    for idx in range(len(cia.ci_objs) - 1):
+        commit_a = cia.ci_objs[idx]
+        commit_b = cia.ci_objs[idx + 1]
+        result = subprocess.check_output(['git', 'diff', '--unified=0', '--diff-filter=M', commit_a.instance.git_sha, commit_b.instance.git_sha], cwd=r'/home/wanghaichi/linux-1')
+        for line in result.decode().split('\n'):
+            print(line)
+            pass
+        # commit_a_obj = repo.commit(commit_a.instance.git_sha)
+        # commit_b_obj = repo.commit(commit_b.instance.git_sha)
+        # diff = commit_a_obj.diff(commit_b_obj)
+        # for diff_obj in diff.iter_change_type('M'):
+        #     file_path = diff_obj.b_path
+        #     if Path(file_path).suffix == '.c':
+        #         a_lines = diff_obj.a_blob.data_stream.read().decode('utf-8', errors="ignore").split('\n')
+        #         b_lines = diff_obj.b_blob.data_stream.read().decode('utf-8', errors="ignore").split('\n')
+        #         diff_lines = difflib.unified_diff(a_lines, b_lines)
+        #         for line in diff_lines:
+        #             pass
+
