@@ -1,4 +1,4 @@
-import pickle
+import re
 from enum import Enum
 from pathlib import Path
 from typing import List
@@ -6,7 +6,7 @@ from typing import List
 from sqlalchemy import Column, String, ForeignKey, Text, Boolean, Integer, DateTime
 from sqlalchemy.orm import declarative_base, relationship
 
-# from liebes.ci_logger import logger
+from liebes.sql_helper import SQLHelper
 from liebes.test_path_mapping import has_mapping
 
 Base = declarative_base()
@@ -41,7 +41,9 @@ class DBCheckout(Base):
     builds = relationship('DBBuild', back_populates='checkout',
                           primaryjoin="and_("
                                       "DBCheckout.id == DBBuild.checkout_id, "
-                                      "or_(DBBuild.build_name =='gcc-13-lkftconfig', DBBuild.build_name =='gcc-13-lkftconfig-compat', DBBuild.build_name == 'gcc-13-lkftconfg-kselftest'), "
+                          # "or_(DBBuild.build_name =='gcc-13-lkftconfig', DBBuild.build_name =='gcc-13-lkftconfig-compat', DBBuild.build_name == 'gcc-13-lkftconfg-kselftest'), "
+                          # "or_(DBBuild.build_name =='clang-17-lkftconfig', DBBuild.build_name =='clang-17-lkftconfig-compat', DBBuild.build_name == 'clang-nightly-lkftconfig', DBBuild.build_name == 'gcc-13-lkftconfig'), "
+                                      "or_(DBBuild.build_name =='clang-16-lkftconfig', DBBuild.build_name =='gcc-12-lkftconfig-no-kselftest-frag', DBBuild.build_name =='gcc-13-lkftconfig-compat', DBBuild.build_name =='clang-17-lkftconfig', DBBuild.build_name =='gcc-13-lkftconfig', DBBuild.build_name =='clang-16-lkftconfig-no-kselftest-frag', DBBuild.build_name =='clang-nightly-lkftconfig', DBBuild.build_name =='clang-17-lkftconfig-compat', DBBuild.build_name =='clang-17-lkftconfig-no-kselftest-frag', DBBuild.build_name =='gcc-13-lkftconfig-no-kselftest-frag', DBBuild.build_name =='gcc-12-lkftconfig-compat', DBBuild.build_name =='gcc-12-lkftconfig', DBBuild.build_name =='clang-16-lkftconfig-compat'), "
                                       "DBBuild.arch == 'x86_64', DBBuild.build_name != '')")
 
     def __str__(self):
@@ -175,7 +177,7 @@ class Checkout:
     def select_build_by_config(self, config_name):
         temp = []
         for build in self.builds:
-            if build.instance.build_name == config_name:
+            if build.label == config_name:
                 temp.append(build)
         self.builds = temp
 
@@ -187,14 +189,44 @@ class Build:
     def __init__(self, db_instance: 'DBBuild'):
         self.instance = db_instance
         self.testruns = [TestRun(x) for x in self.instance.testruns]
+
+        self.previous_build_names = set()
+        self.build_name = None
         # self.tests = [Test(x) for x in self.instance.tests]
 
     @property
     def label(self) -> str:
+        if self.build_name is not None:
+            return self.build_name
         return self.instance.build_name
 
     def get_all_testcases(self) -> List['Test']:
         return [t for r in self.testruns for t in r.get_all_testcases()]
+
+    def get_config(self, gcov=False):
+        config_list = re.split(r"\s+", self.instance.kconfig.replace("]", "").replace("[", ""))
+        config_items = []
+        sql = SQLHelper()
+        for c in config_list:
+            if c.startswith("http"):
+                config_detail = sql.session.query(DBConfig).filter(DBConfig.url == c).first()
+                for line in config_detail.content.split("\n"):
+                    line = line.strip()
+                    if line == "":
+                        continue
+                    if line.startswith("#"):
+                        continue
+                    config_items.append(line)
+            if c.startswith("CONFIG_"):
+                config_items.append(c)
+        config_cmd = " ".join(config_items)
+        config_cmd += " CONFIG_KCOV=y CONFIG_DEBUG_INFO_DWARF4=y CONFIG_KASAN=y CONFIG_KASAN_INLINE=y CONFIG_CONFIGFS_FS=y CONFIG_SECURITYFS=y"
+        if gcov:
+            # for code coverage
+            config_cmd += " CONFIG_DEBUG_FS=y CONFIG_GCOV_KERNEL=y CONFIG_GCOV_FORMAT_AUTODETECT=y CONFIG_GCOV_PROFILE_ALL=y"
+        # for special test case
+        config_cmd += " CONFIG_USER_NS=y"
+        return config_cmd
 
     def __str__(self):
         return str(self.instance)
