@@ -1,13 +1,8 @@
+import shutil
 import subprocess
-import sys
-
 from pathlib import Path
 
-from liebes.CiObjects import DBConfig
-from liebes.sql_helper import SQLHelper
-import pexpect
-import shutil
-import atexit
+from liebes.ci_logger import logger
 
 
 class ReproUtil:
@@ -35,11 +30,11 @@ class ReproUtil:
     def run_command(self, cmd, cwd=None):
         if cwd is None:
             cwd = self.home_dir
-        print("execute command: ", cmd)
+        logger.info("execute command: ", cmd)
         result = subprocess.run(cmd, shell=True, capture_output=True, text=True, cwd=cwd)
         if result.returncode != 0:
-            print("execute command failed: ", cmd)
-            print("error message: ", result.stderr)
+            logger.error("execute command failed: ", cmd)
+            logger.error("error message: ", result.stderr)
         return result
 
     def prepare_ltp_binary(self, git_sha):
@@ -51,10 +46,9 @@ class ReproUtil:
         # step1. checkout ltp to the specific git sha
 
         work_ltp_dir = Path(f"{self.home_dir}/repro_ltps/{git_sha}")
-        # TODO check if it is already exist
         if work_ltp_dir.exists() and (work_ltp_dir / "build").exists():
             self.ltp_bin = work_ltp_dir / "build"
-            print("ltp bin is located at ", self.ltp_bin)
+            logger.info("ltp bin is located at ", self.ltp_bin)
             return True
         # work_ltp_dir.mkdir(parents=True)
         cmd = f"cp -r {self.ltp_dir} {work_ltp_dir}"
@@ -71,7 +65,7 @@ class ReproUtil:
         if self.run_command(cmd, work_ltp_dir).returncode != 0:
             return False
         self.ltp_bin = work_ltp_dir / "build"
-        print("ltp bin is located at ", work_ltp_dir / "build")
+        logger.info("ltp bin is located at ", work_ltp_dir / "build")
         return True
 
     def copy_ltp_bin_to_vm(self):
@@ -193,8 +187,8 @@ echo "  tar xfz $DEST "
         -nographic \
         -pidfile {self.pid_file} \
         2>&1 | tee vm_{self.pid_index}.log'
-        print(cmd)
-        vm_log_file = Path(self.result_dir) / "vm.log"
+        logger.info(cmd)
+        # vm_log_file = Path(self.result_dir) / "vm.log"
         # qemu_process = subprocess.Popen(cmd, shell=True, text=True, stdout=vm_log_file.open("w"),
         #                                 stderr=vm_log_file.open("w"))
         qemu_process = subprocess.Popen(cmd, shell=True, text=True)
@@ -214,35 +208,35 @@ echo "  tar xfz $DEST "
             cmd = f'lcov -z'
             res = self.execute_cmd_in_qemu(cmd)
             if res.returncode != 0:
-                print("failed to reset lcov")
+                logger.error("failed to reset lcov")
                 return
         cmd = f'cd /root/ltp_bin && KCONFIG_PATH=/root/config.gz timeout {timeout}s ./runltp -s {testcase_name}'
         res = self.execute_cmd_in_qemu(cmd)
         if save_result:
             if res.returncode != 0:
                 if res.returncode == 124:
-                    print("timeout")
+                    logger.error("timeout")
                     result_file = Path(self.result_dir) / f"{testcase_name}.err"
                     result_file.write_text(res.stdout + res.stderr)
-                    print("save err result to ", result_file)
+                    logger.error("save err result to ", result_file)
                 else:
                     result_file = Path(self.result_dir) / f"{testcase_name}.result"
                     result_file.write_text(res.stdout + res.stderr)
-                    print("save fail result to ", result_file)
+                    logger.info("save fail result to ", result_file)
             else:
                 result_file = Path(self.result_dir) / f"{testcase_name}.result"
                 result_file.write_text(res.stdout)
-                print("save succ result to ", result_file)
+                logger.info("save succ result to ", result_file)
         if collect_coverage:
             cmd = f'cd /root && ./collect_coverage.sh /root/{testcase_name}_coverage.tar.gz'
             res = self.execute_cmd_in_qemu(cmd)
             if res.returncode != 0:
-                print("failed to collect coverage")
+                logger.error("failed to collect coverage")
                 return
             cmd = (f'scp -i {self.ssh_key} -P {self.vm_port} -o "StrictHostKeyChecking no" root@localhost:/root/{testcase_name}_coverage.tar.gz {self.work_linux_dir}/{testcase_name}_coverage.tar.gz')
             res = self.run_command(cmd)
             if res.returncode != 0:
-                print("failed to copy coverage")
+                logger.error("failed to copy coverage")
                 return
             cmd = f"cd /root && rm -f /root/{testcase_name}_coverage.tar.gz"
             self.execute_cmd_in_qemu(cmd)
