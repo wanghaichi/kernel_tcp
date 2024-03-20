@@ -38,24 +38,17 @@ class DBCheckout(Base):
     patch_source = Column(String(200))
     git_commit_datetime = Column(DateTime)
 
-    builds = relationship('DBBuild', back_populates='checkout',
-                          primaryjoin="and_("
-                                      "DBCheckout.id == DBBuild.checkout_id, "
-<<<<<<< HEAD
-                                      "or_(DBBuild.build_name =='clang-17-lkftconfig', DBBuild.build_name =='clang-16-lkftconfig'), "
-                                      "DBBuild.arch == 'x86_64', DBBuild.build_name != '')")
-
     # builds = relationship('DBBuild', back_populates='checkout',
-    #                     primaryjoin="and_("
-    #                                 "DBCheckout.id == DBBuild.checkout_id, "
-    #                                 "or_(DBBuild.build_name =='gcc-13-lkftconfig', DBBuild.build_name =='gcc-13-lkftconfig-kselftest', DBBuild.build_name =='gcc-13-lkftconfig-compat', DBBuild.build_name =='gcc-13-lkftconfig-debug-kmemleak', DBBuild.build_name =='gcc-13-lkftconfig-no-kselftest-frag'), "
-    #                                 "DBBuild.arch == 'x86_64', DBBuild.build_name != '')")
-=======
-                          # "or_(DBBuild.build_name =='gcc-13-lkftconfig', DBBuild.build_name =='gcc-13-lkftconfig-compat', DBBuild.build_name == 'gcc-13-lkftconfg-kselftest'), "
-                          # "or_(DBBuild.build_name =='clang-17-lkftconfig', DBBuild.build_name =='clang-17-lkftconfig-compat', DBBuild.build_name == 'clang-nightly-lkftconfig', DBBuild.build_name == 'gcc-13-lkftconfig'), "
-                                      "or_(DBBuild.build_name =='clang-16-lkftconfig', DBBuild.build_name =='gcc-12-lkftconfig-no-kselftest-frag', DBBuild.build_name =='gcc-13-lkftconfig-compat', DBBuild.build_name =='clang-17-lkftconfig', DBBuild.build_name =='gcc-13-lkftconfig', DBBuild.build_name =='clang-16-lkftconfig-no-kselftest-frag', DBBuild.build_name =='clang-nightly-lkftconfig', DBBuild.build_name =='clang-17-lkftconfig-compat', DBBuild.build_name =='clang-17-lkftconfig-no-kselftest-frag', DBBuild.build_name =='gcc-13-lkftconfig-no-kselftest-frag', DBBuild.build_name =='gcc-12-lkftconfig-compat', DBBuild.build_name =='gcc-12-lkftconfig', DBBuild.build_name =='clang-16-lkftconfig-compat'), "
-                                      "DBBuild.arch == 'x86_64', DBBuild.build_name != '')")
->>>>>>> 6d935c4a72e445fc251e966b6981ed848c2791f1
+    #                       primaryjoin="and_("
+    #                                   "DBCheckout.id == DBBuild.checkout_id, "
+    #                                   "or_(DBBuild.build_name =='clang-16-lkftconfig', DBBuild.build_name =='gcc-12-lkftconfig-no-kselftest-frag', DBBuild.build_name =='gcc-13-lkftconfig-compat', DBBuild.build_name =='clang-17-lkftconfig', DBBuild.build_name =='gcc-13-lkftconfig', DBBuild.build_name =='clang-16-lkftconfig-no-kselftest-frag', DBBuild.build_name =='clang-nightly-lkftconfig', DBBuild.build_name =='clang-17-lkftconfig-compat', DBBuild.build_name =='clang-17-lkftconfig-no-kselftest-frag', DBBuild.build_name =='gcc-13-lkftconfig-no-kselftest-frag', DBBuild.build_name =='gcc-12-lkftconfig-compat', DBBuild.build_name =='gcc-12-lkftconfig', DBBuild.build_name =='clang-16-lkftconfig-compat'), "
+    #                                   "DBBuild.arch == 'x86_64', DBBuild.build_name != '')")
+    
+    builds = relationship('DBBuild', back_populates='checkout',
+                        primaryjoin="and_("
+                                    "DBCheckout.id == DBBuild.checkout_id, "
+                                    "or_(DBBuild.build_name =='clang-16-lkftconfig', DBBuild.build_name =='clang-17-lkftconfig'), "
+                                    "DBBuild.arch == 'x86_64', DBBuild.build_name != '')")
 
     def __str__(self):
         return (

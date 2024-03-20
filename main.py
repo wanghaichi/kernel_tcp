@@ -14,6 +14,8 @@ from tree_sitter import Language, Parser
 import difflib
 import subprocess
 import numpy as np
+import requests
+import re
 
 class TestCaseInfo:
     def __init__(self):
@@ -131,33 +133,44 @@ if __name__ == '__main__':
     sql = SQLHelper()
     start_time = datetime.now()
 
-    checkouts = sql.session.query(DBCheckout).order_by(DBCheckout.git_commit_datetime.desc()).limit(20).all()
+    checkouts = sql.session.query(DBCheckout).order_by(DBCheckout.git_commit_datetime.desc()).limit(600).all()
     cia = CIAnalysis()
     for ch in checkouts:
         cia.ci_objs.append(Checkout(ch))
     cia.reorder()
     cia.set_parallel_number(40)
     cia.filter_job("COMBINE_SAME_CASE")
+    cia.filter_job("FILTER_SMALL_BRANCH", minimal_testcases=20)
+    cia.filter_job("COMBINE_SAME_CONFIG")
+    cia.filter_job("CHOOSE_ONE_BUILD")
+    cia.filter_job("FILTER_SMALL_BRANCH", minimal_testcases=20)
     cia.filter_job("FILTER_FAIL_CASES_IN_LAST_VERSION")
     # cia.ci_objs = cia.ci_objs[1:]
     cia.statistic_data()
-    repo = Repo(linux_path)
-    for idx in range(len(cia.ci_objs) - 1):
-        commit_a = cia.ci_objs[idx]
-        commit_b = cia.ci_objs[idx + 1]
-        result = subprocess.check_output(['git', 'diff', '--unified=0', '--diff-filter=M', commit_a.instance.git_sha, commit_b.instance.git_sha], cwd=r'/home/wanghaichi/linux-1')
-        for line in result.decode().split('\n'):
-            print(line)
-            pass
-        # commit_a_obj = repo.commit(commit_a.instance.git_sha)
-        # commit_b_obj = repo.commit(commit_b.instance.git_sha)
-        # diff = commit_a_obj.diff(commit_b_obj)
-        # for diff_obj in diff.iter_change_type('M'):
-        #     file_path = diff_obj.b_path
-        #     if Path(file_path).suffix == '.c':
-        #         a_lines = diff_obj.a_blob.data_stream.read().decode('utf-8', errors="ignore").split('\n')
-        #         b_lines = diff_obj.b_blob.data_stream.read().decode('utf-8', errors="ignore").split('\n')
-        #         diff_lines = difflib.unified_diff(a_lines, b_lines)
-        #         for line in diff_lines:
-        #             pass
+
+    checkout_ltp_map = {}
+
+    for ci_obj in cia.ci_objs:
+        ltp_version = None
+        for build in ci_obj.builds:
+            for tr in build.testruns:
+                try:
+                    log_url = tr.instance.log_file
+                    log_text = requests.get(log_url).text
+                    pattern = r'LTP [vV]ersion: (\d+)'
+                    re_match = re.search(pattern, log_text)
+                    if re_match:
+                        ltp_version = re_match.group(1)
+                        break
+                except Exception:
+                    do_nothing = Exception
+            if ltp_version is not None:
+                break
+        
+        checkout_ltp_map[ci_obj.instance.git_sha] = ltp_version
+        print(ci_obj.instance.git_sha)
+
+    with open(r'checkout_ltp_version_map.json', r'w') as f:
+        json.dump(checkout_ltp_map, f)
+    f.close()
 
