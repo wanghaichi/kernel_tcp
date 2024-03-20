@@ -383,7 +383,7 @@ class CIAnalysis:
         for k, v in count_in_each_version.items():
             l.append((v, total_test_cases[k] / v, k_name[k]))
         l = sorted(l, key=lambda x: x[0], reverse=True)
-        print(f"select {l[0][1]} as build name with {l[0][1]} test cases per build, total {l[0][0]} builds.")
+        logger.info(f"select {l[0][1]} as build name with {l[0][1]} test cases per build, total {l[0][0]} builds.")
         self.select(l[0][2])
         # print(v, total_test_cases[k], total_test_cases[k] / v, k_name[k], k)
 
