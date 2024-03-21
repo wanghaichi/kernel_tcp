@@ -30,7 +30,7 @@ class LLVMHelper:
 
         Path(f"{self.root_path}/build.sh").write_text(parsed_cmd)
         Path(f"{self.root_path}/build.sh").chmod(0o755)
-        Path(f"{self.root_path}/combine.sh").write_text(parsed_cmd)
+        Path(f"{self.root_path}/combine.sh").write_text(combine_llvm_code_cmd)
         Path(f"{self.root_path}/combine.sh").chmod(0o755)
         logger.info("start to execute make command")
         cmd = f"bash build.sh"
