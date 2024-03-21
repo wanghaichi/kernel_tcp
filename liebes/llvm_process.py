@@ -35,6 +35,7 @@ class LLVMHelper:
         logger.info("start to execute make command")
         cmd = f"bash build.sh"
         subprocess.run(cmd, shell=True, capture_output=True, text=True, cwd=self.root_path)
+        cmd = f"bash combine.sh"
         subprocess.run(cmd, shell=True, capture_output=True, text=True, cwd=self.root_path)
         logger.info(f"The bitcode is generated successfully. Please check bc file starts with dep_ at {self.root_path}")
         return
