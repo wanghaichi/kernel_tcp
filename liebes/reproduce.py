@@ -3,7 +3,7 @@ import subprocess
 from pathlib import Path
 
 from liebes.ci_logger import logger
-
+from datetime import datetime
 
 class ReproUtil:
     def __init__(self, home_dir, fs_image_root, port, linux_dir, ltp_dir, pid_index=0, vm_mem=10):
@@ -30,14 +30,18 @@ class ReproUtil:
     def run_command(self, cmd, cwd=None):
         if cwd is None:
             cwd = self.home_dir
-        logger.info("execute command: ", cmd)
+        logger.info(f"execute command: {cmd}")
         result = subprocess.run(cmd, shell=True, capture_output=True, text=True, cwd=cwd)
         if result.returncode != 0:
-            logger.error("execute command failed: ", cmd)
-            logger.error("error message: ", result.stderr)
+            logger.error(f"execute command failed: {cmd}")
+            logger.error(f"error message: {result.stderr}")
         return result
 
     def prepare_ltp_binary(self, git_sha):
+        # make sure all dependencies are installed
+        # check the result of ./configure in ltp
+        # if some dependencies are missing, install them
+
         # step0. update ltp to the latest version
         # cmd = "git pull origin master"
         # if self.run_command(cmd, self.ltp_dir).returncode != 0:
@@ -48,7 +52,7 @@ class ReproUtil:
         work_ltp_dir = Path(f"{self.home_dir}/repro_ltps/{git_sha}")
         if work_ltp_dir.exists() and (work_ltp_dir / "build").exists():
             self.ltp_bin = work_ltp_dir / "build"
-            logger.info("ltp bin is located at ", self.ltp_bin)
+            logger.info(f"ltp bin is located at {self.ltp_bin.absolute()}")
             return True
         # work_ltp_dir.mkdir(parents=True)
         cmd = f"cp -r {self.ltp_dir} {work_ltp_dir}"
@@ -65,7 +69,7 @@ class ReproUtil:
         if self.run_command(cmd, work_ltp_dir).returncode != 0:
             return False
         self.ltp_bin = work_ltp_dir / "build"
-        logger.info("ltp bin is located at ", work_ltp_dir / "build")
+        logger.info(f"ltp bin is located at {work_ltp_dir / 'build'}")
         return True
 
     def copy_ltp_bin_to_vm(self):
@@ -85,6 +89,13 @@ class ReproUtil:
         if self.execute_cmd_in_qemu(cmd).returncode != 0:
             return False
 
+        # copy kernel modules
+        cmd = f"mkdir -p /lib/modules/$(uname -r)/"
+        if self.execute_cmd_in_qemu(cmd).returncode != 0:
+            return False
+        cmd = f"scp -i {self.ssh_key} -P {self.vm_port} -o \"StrictHostKeyChecking no\" -r {self.work_linux_dir}/modules.builtin root@localhost:/lib/modules/$(uname -r)/"
+        if self.run_command(cmd).returncode != 0:
+            return False
         # copy coverage collecting script to vm
         shell_content = f'''#!/bin/bash -e
 
@@ -210,23 +221,27 @@ echo "  tar xfz $DEST "
             if res.returncode != 0:
                 logger.error("failed to reset lcov")
                 return
+        # collect time cost
+        start_time = datetime.now()
         cmd = f'cd /root/ltp_bin && KCONFIG_PATH=/root/config.gz timeout {timeout}s ./runltp -s {testcase_name}'
         res = self.execute_cmd_in_qemu(cmd)
+        cost_time = datetime.now() - start_time
+        logger.info(f"test case {testcase_name} cost time: {cost_time}")
         if save_result:
             if res.returncode != 0:
                 if res.returncode == 124:
                     logger.error("timeout")
                     result_file = Path(self.result_dir) / f"{testcase_name}.err"
-                    result_file.write_text(res.stdout + res.stderr)
-                    logger.error("save err result to ", result_file)
+                    result_file.write_text(res.stdout + res.stderr + f"\nTime cost: {cost_time}s\n")
+                    logger.error(f"save err result to {result_file}")
                 else:
                     result_file = Path(self.result_dir) / f"{testcase_name}.result"
-                    result_file.write_text(res.stdout + res.stderr)
-                    logger.info("save fail result to ", result_file)
+                    result_file.write_text(res.stdout + res.stderr + f"\nTime cost: {cost_time}s\n")
+                    logger.info(f"save fail result to {result_file}")
             else:
                 result_file = Path(self.result_dir) / f"{testcase_name}.result"
-                result_file.write_text(res.stdout)
-                logger.info("save succ result to ", result_file)
+                result_file.write_text(res.stdout + f"\nTime cost: {cost_time}s\n")
+                logger.info(f"save succ result to {result_file}")
         if collect_coverage:
             cmd = f'cd /root && ./collect_coverage.sh /root/{testcase_name}_coverage.tar.gz'
             res = self.execute_cmd_in_qemu(cmd)

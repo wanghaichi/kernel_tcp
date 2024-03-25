@@ -225,7 +225,7 @@ class Build:
             # for code coverage
             config_cmd += " CONFIG_DEBUG_FS=y CONFIG_GCOV_KERNEL=y CONFIG_GCOV_FORMAT_AUTODETECT=y CONFIG_GCOV_PROFILE_ALL=y"
         # for special test case
-        config_cmd += " CONFIG_USER_NS=y"
+        config_cmd += " CONFIG_USER_NS=y CONFIG_VETH=y CONFIG_TUN=y"
         return config_cmd
 
     def __str__(self):
@@ -296,12 +296,13 @@ class Test:
     def is_failed(self):
         return self.status in [1, 2]
 
-    def merge_status(self, other_testcase: 'DBTest'):
+    def merge_status(self, other_testcase: 'Test'):
         if self.is_pass() and other_testcase.is_pass():
             pass
-        else:
+        elif other_testcase.is_failed():
             self.status = 1
-            self.id = other_testcase.id
+        elif self.is_unknown():
+            self.status = other_testcase.status
 
     def map_test(self) -> bool:
         if self.file_path is not None:

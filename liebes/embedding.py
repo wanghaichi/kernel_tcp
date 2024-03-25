@@ -102,7 +102,6 @@ class TextEmbedding(Embedding):
         # build tf-idf model
         corpus = [" ".join(sent) for sent in preprocessed_sentences]
         # Initialize and fit the TF-IDF vectorizer
-        print("123")
         self.tf_idf_model.fit(corpus)
 
         # Train the Word2Vec model
