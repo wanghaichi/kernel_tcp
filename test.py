@@ -11,6 +11,6 @@ import numpy as np
 from liebes.llvm_process import LLVMHelper
 
 if __name__ == '__main__':
-    llvm_helper = LLVMHelper(root_path=r'/home/duyiheng/projects/ltp_projects/ltp_20240129/ltp-20240129')
+    llvm_helper = LLVMHelper(root_path=r'/home/duyiheng/projects/ltp_projects/ltp_20230127/ltp-20230127')
     llvm_helper.generate_bitcode()
 

@@ -12,7 +12,7 @@ from liebes.tcp_approach import adaptive_random_prior
 if __name__ == '__main__':
     linux_path = '/home/wanghaichi/linux-1'
     sql = SQLHelper()
-    checkouts = sql.session.query(DBCheckout).order_by(DBCheckout.git_commit_datetime.desc()).limit(600).all()
+    checkouts = sql.session.query(DBCheckout).order_by(DBCheckout.git_commit_datetime.desc()).limit(5).all()
     cia = CIAnalysis()
     for ch in checkouts:
         cia.ci_objs.append(Checkout(ch))
@@ -23,6 +23,11 @@ if __name__ == '__main__':
     cia.filter_job("FILTER_FAIL_CASES_IN_LAST_VERSION")
     cia.ci_objs = cia.ci_objs[1:]
     cia.statistic_data()
+
+    for ci_obj in cia.ci_objs:
+        print(EHelper.get_ltp_version(ci_obj.instance.git_sha))
+
+    exit(1)
 
     distance_metrics = [
         # 'hanming_distance',

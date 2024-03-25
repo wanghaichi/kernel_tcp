@@ -16,6 +16,8 @@ import subprocess
 import numpy as np
 import requests
 import re
+from datetime import datetime
+import pymysql
 
 class TestCaseInfo:
     def __init__(self):
@@ -27,150 +29,47 @@ def update_token_mapping(m, mapping_path):
     json.dump(m, Path(mapping_path).open("w"))
 
 
-def do_exp(cia: CIAnalysis, tokenizer: BaseTokenizer, ir_model: BaseModel, context_strategy=""):
-    ehelper = EHelper()
-    gitHelper = GitHelper(linux_path)
-    mapping_path = f"token-{tokenizer.name}.json"
-    if Path(mapping_path).exists():
-        m = json.load(Path(mapping_path).open("r"))
-    else:
-        m = {}
-    apfd_res = []
-    apfd_seperate = []
-    for ci_index in range(1, len(cia.ci_objs)):
-        ci_obj = cia.ci_objs[ci_index]
-        if gitHelper.get_commit_info(ci_obj.instance.git_sha) is None:
-            logger.debug(f"commit not exist, {ci_obj.instance.git_sha}")
-            continue
-        last_ci_obj = cia.ci_objs[ci_index - 1]
-        # start iteration of one test result
-        # 1. first extract the faults result
-        test_cases = ci_obj.get_all_testcases()
-        faults_arr = []
-        for i in range(len(test_cases)):
-            if test_cases[i].is_failed():
-                faults_arr.append(i)
-        if len(faults_arr) == 0:
-            continue
-        # 2. get code changes
-        code_changes = gitHelper.get_diff_contents(
-            last_ci_obj.instance.git_sha, ci_obj.instance.git_sha,
-            context_strategy)
-        # Assert the code changes must greater than 5
-        if len(code_changes) == 0:
-            continue
-
-        # 3. second obtain the sort result
-        token_arr = []
-        for i in range(len(test_cases)):
-            t = test_cases[i]
-            if str(t.file_path) in m.keys():
-                token_arr.append(m[str(t.file_path)])
-            else:
-                try:
-                    tokens = tokenizer.get_tokens(Path(t.file_path).read_text(), t.type)
-                except Exception as e:
-                    # print(e)
-                    # print(t.file_path)
-                    tokens = []
-                v = " ".join(tokens)
-                v = v.lower()
-                token_arr.append(v)
-                m[str(t.file_path)] = v
-                json.dump(m, Path(mapping_path).open("w"))
-        queries = []
-        for cc in code_changes:
-            tokens = tokenizer.get_tokens(cc, TestCaseType.C)
-            queries.append(" ".join(tokens))
-        # print(f"corpus: {len(token_arr)}, queries: {len(queries)}")
-        s = ir_model.get_similarity(token_arr, queries)
-
-        logger.debug(s.shape)
-        similarity_sum = np.sum(s, axis=1)
-        # print(similarity_sum)
-        # print(len(similarity_sum))
-
-        order_arr = np.argsort(similarity_sum)[::-1]
-
-        apfd_v = ehelper.APFD(faults_arr, order_arr)
-        logger.debug(f"model: {ir_model.name}, commit: {ci_obj.instance.git_sha}, apfd: {apfd_v}")
-        apfd_res.append(apfd_v)
-        logger.debug("faults test cases file path")
-        for fi in faults_arr:
-            logger.debug(f"{test_cases[fi].file_path}, {order_arr[fi]}")
-        logger.debug("code changes")
-        for c in code_changes:
-            logger.debug(c)
-
-        # calculate the results for sh, and c files
-        faults_c = []
-        faults_sh = []
-        for f_i in faults_arr:
-            if test_cases[f_i].type == TestCaseType.C:
-                faults_c.append(f_i)
-            elif test_cases[f_i].type == TestCaseType.SH:
-                faults_sh.append(f_i)
-        order_arr_c = []
-        order_arr_sh = []
-        for i in range(len(order_arr)):
-            o_i = order_arr[i]
-            if test_cases[o_i].type == TestCaseType.C:
-                order_arr_c.append(o_i)
-            elif test_cases[o_i].type == TestCaseType.SH:
-                order_arr_sh.append(o_i)
-        apfd_v_c = ehelper.APFD(faults_c, order_arr_c)
-        apfd_v_sh = ehelper.APFD(faults_sh, order_arr_sh)
-        logger.debug(f"model: {ir_model.name}, commit: {ci_obj.instance.git_sha}, apfd_c: {apfd_v_c}")
-        logger.debug(f"model: {ir_model.name}, commit: {ci_obj.instance.git_sha}, apfd_sh: {apfd_v_sh}")
-        apfd_seperate.append((apfd_v_c, apfd_v_sh))
-
-    logger.info(f"model: {ir_model.name}, avg apfd: {np.average(apfd_res)}, apfd_c: {np.average([x[0] for x in apfd_seperate])}, apfd_sh: {np.average([x[1] for x in apfd_seperate])}")
-    return f"model: {ir_model.name}, avg apfd: {np.average(apfd_res)}, apfd_c: {np.average([x[0] for x in apfd_seperate])}, apfd_sh: {np.average([x[1] for x in apfd_seperate])}"
-
-
 if __name__ == '__main__':
-    linux_path = '/home/wanghaichi/linux-1'
-    sql = SQLHelper()
-    start_time = datetime.now()
+    connection = pymysql.connect(
+    host = 'localhost',
+    user = 'root',
+    password = 'linux@133',
+    database = 'lkft',
+    port = 3306
+    )
 
-    checkouts = sql.session.query(DBCheckout).order_by(DBCheckout.git_commit_datetime.desc()).limit(600).all()
-    cia = CIAnalysis()
-    for ch in checkouts:
-        cia.ci_objs.append(Checkout(ch))
-    cia.reorder()
-    cia.set_parallel_number(40)
-    cia.filter_job("COMBINE_SAME_CASE")
-    cia.filter_job("FILTER_SMALL_BRANCH", minimal_testcases=20)
-    cia.filter_job("COMBINE_SAME_CONFIG")
-    cia.filter_job("CHOOSE_ONE_BUILD")
-    cia.filter_job("FILTER_SMALL_BRANCH", minimal_testcases=20)
-    cia.filter_job("FILTER_FAIL_CASES_IN_LAST_VERSION")
-    # cia.ci_objs = cia.ci_objs[1:]
-    cia.statistic_data()
+    cursor = connection.cursor()
 
-    checkout_ltp_map = {}
+    sql = r'select * from checkout'
+    cursor.execute(sql)
 
-    for ci_obj in cia.ci_objs:
-        ltp_version = None
-        for build in ci_obj.builds:
-            for tr in build.testruns:
-                try:
-                    log_url = tr.instance.log_file
-                    log_text = requests.get(log_url).text
-                    pattern = r'LTP [vV]ersion: (\d+)'
-                    re_match = re.search(pattern, log_text)
-                    if re_match:
-                        ltp_version = re_match.group(1)
-                        break
-                except Exception:
-                    do_nothing = Exception
-            if ltp_version is not None:
-                break
-        
-        checkout_ltp_map[ci_obj.instance.git_sha] = ltp_version
-        print(ci_obj.instance.git_sha)
+    results = cursor.fetchall()
 
-    with open(r'checkout_ltp_version_map.json', r'w') as f:
-        json.dump(checkout_ltp_map, f)
+    with open(r'checkout_ltp_version_map.json', r'r') as f:
+        tmp = json.load(f)
     f.close()
+
+    print(len(tmp))
+
+    # checkout_ltp_map = {}
+    # version_date = datetime(2024, 1, 31)
+
+    # for ci_obj in results:
+    #     ltp_version = None
+    #     if tmp.get(ci_obj[6]) is not None:
+    #         continue
+
+    #     commit_time = ci_obj[13]
+    #     if commit_time >= version_date:
+    #         ltp_version = '20240129'
+    #     else:
+    #         ltp_version = '20230929'
+
+    #     tmp[ci_obj[6]] = ltp_version
+        
+        
+
+    # with open(r'checkout_ltp_version_map.json', r'w') as f:
+    #     json.dump(tmp, f)
+    # f.close()
 

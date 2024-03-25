@@ -1,4 +1,5 @@
 from typing import List
+import json
 
 
 class EHelper:
@@ -17,3 +18,10 @@ class EHelper:
         res = 1 - res
         res += 1 / (2 * len(test_cases_order))
         return res
+    
+    def get_ltp_version(git_sha: str):
+        with open(r'checkout_ltp_version_map.json', r'r') as f:
+            data = json.load(f)
+        f.close()
+
+        return data.get(git_sha)
