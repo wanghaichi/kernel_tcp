@@ -193,8 +193,8 @@ class CIAnalysis:
                 for testrun in build.testruns:
                     temp = []
                     for test_case in testrun.tests:
-                        if test_case.map_test() and Path(test_case.file_path).exists() and Path(
-                                test_case.file_path).is_file():
+                        # if test_case.map_test() and Path(test_case.file_path).exists() and test_case.file_path != '':
+                        if test_case.map_test() and Path(test_case.file_path).exists() and Path(test_case.file_path).is_file():
                             temp.append(test_case)
                         # else:
                         #     if "login" in test_case.test_path or "speculative" in test_case.test_path:
@@ -333,6 +333,7 @@ class CIAnalysis:
                     file.write(f"  Testcase Count: {testcase_count}\n")
                 file.write("\n")
         return ci_objs
+    
 
     def assert_all_test_file_exists(self):
         flag = True
