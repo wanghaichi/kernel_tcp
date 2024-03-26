@@ -233,7 +233,9 @@ class Build:
             # for code coverage
             config_cmd += " CONFIG_DEBUG_FS=y CONFIG_GCOV_KERNEL=y CONFIG_GCOV_FORMAT_AUTODETECT=y CONFIG_GCOV_PROFILE_ALL=y"
         # for special test case
-        config_cmd += " CONFIG_USER_NS=y CONFIG_VETH=y CONFIG_TUN=y"
+        config_cmd += (" CONFIG_USER_NS=y CONFIG_VETH=y CONFIG_TUN=y CPU_FREQ=y SCHED_SMT=y SCHED_MC=y "
+                       "CONFIG_MANDATORY_FILE_LOCKING=y CONFIG_VSOCKETS_LOOPBACK=y "
+                       "CONFIG_UBSAN_SIGNED_OVERFLOW=y CONFIG_FS_VERITY=y CONFIG_NUMA=y")
         return config_cmd
 
     def __str__(self):
@@ -280,6 +282,13 @@ class Test:
         3: "Test execution status unknown" or otherwise "SKIP"
         '''
 
+    def get_suite_name(self):
+        if self.file_path.startswith("test_cases/ltp"):
+            return "ltp"
+        elif self.file_path.startswith("test_cases/selftests"):
+            return "selftests"
+        return "unknown"
+
     @property
     def type(self):
         if self._type is None:
@@ -305,12 +314,15 @@ class Test:
         return self.status in [1, 2]
 
     def merge_status(self, other_testcase: 'Test'):
-        if self.is_pass() and other_testcase.is_pass():
+        if self.is_pass() or other_testcase.is_pass():
+            self.status = 0
             pass
-        elif other_testcase.is_failed():
+        elif self.is_failed() or other_testcase.is_failed():
             self.status = 1
-        elif self.is_unknown():
-            self.status = other_testcase.status
+        else:
+            self.status = 3
+        # elif self.is_unknown():
+        #     self.status = other_testcase.status
 
     def map_test(self) -> bool:
         if self.file_path is not None:

@@ -29,7 +29,7 @@ class GitHelper:
         self.repo = Repo(repo_path)
         self.ast_parser = CodeAstParser()
         self.cg = CallGraph()
-        self.cg.load_from_source("/home/wanghaichi/llvm_kernel/output-cg.txt")
+        # self.cg.load_from_source("output-cg.txt")
 
     def get_commit_info_by_time(self, target_time):
         # Iterate over the commits

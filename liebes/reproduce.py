@@ -5,6 +5,7 @@ from pathlib import Path
 from liebes.ci_logger import logger
 from datetime import datetime
 
+
 class ReproUtil:
     def __init__(self, home_dir, fs_image_root, port, linux_dir, ltp_dir, pid_index=0, vm_mem=10):
         self.home_dir = home_dir
@@ -72,14 +73,7 @@ class ReproUtil:
         logger.info(f"ltp bin is located at {work_ltp_dir / 'build'}")
         return True
 
-    def copy_ltp_bin_to_vm(self):
-        cmd = f"rm -rf {self.vm_bin}"
-        if self.execute_cmd_in_qemu(cmd).returncode != 0:
-            return False
-        cmd = f"scp -i {self.ssh_key} -P {self.vm_port} -o \"StrictHostKeyChecking no\" -r {self.ltp_bin} root@localhost:/root/ltp_bin"
-        if self.run_command(cmd).returncode != 0:
-            return False
-
+    def copy_essential_files_to_vm(self):
         # copy kernel config
         cmd = f"scp -i {self.ssh_key} -P {self.vm_port} -o \"StrictHostKeyChecking no\" -r {self.work_linux_dir}/.config root@localhost:/root/config"
         if self.run_command(cmd).returncode != 0:
@@ -90,38 +84,46 @@ class ReproUtil:
             return False
 
         # copy kernel modules
-        cmd = f"mkdir -p /lib/modules/$(uname -r)/"
+        cmd = f"mkdir -p /lib/modules/\$(uname -r)/"
         if self.execute_cmd_in_qemu(cmd).returncode != 0:
             return False
-        cmd = f"scp -i {self.ssh_key} -P {self.vm_port} -o \"StrictHostKeyChecking no\" -r {self.work_linux_dir}/modules.builtin root@localhost:/lib/modules/$(uname -r)/"
+        cmd = f"scp -i {self.ssh_key} -P {self.vm_port} -o \"StrictHostKeyChecking no\" -r {self.work_linux_dir}/modules.builtin \"root@localhost:/lib/modules/\$(uname -r)/\""
         if self.run_command(cmd).returncode != 0:
             return False
-        # copy coverage collecting script to vm
+            # copy coverage collecting script to vm
         shell_content = f'''#!/bin/bash -e
 
-DEST=$1
-GCDA=/sys/kernel/debug/gcov{self.work_linux_dir}
+        DEST=$1
+        GCDA=/sys/kernel/debug/gcov{self.work_linux_dir}
 
-if [ -z "$DEST" ] ; then
-    echo "Usage: $0 <output.tar.gz>" >&2
-    exit 1
-fi
+        if [ -z "$DEST" ] ; then
+            echo "Usage: $0 <output.tar.gz>" >&2
+            exit 1
+        fi
 
-TEMPDIR=$(mktemp -d)
-echo Collecting data..
-find $GCDA -type d -exec mkdir -p $TEMPDIR/\\{{\\}} \\;
-find $GCDA -name '*.gcda' -exec sh -c 'cat < $0 > '$TEMPDIR'/$0' {{}} \\;
-# find $GCDA -name '*.gcno' -exec sh -c 'cp -d $0 '$TEMPDIR'/$0' {{}} \\;
-tar czf $DEST -C $TEMPDIR/$GCDA .
-rm -rf $TEMPDIR
+        TEMPDIR=$(mktemp -d)
+        echo Collecting data..
+        find $GCDA -type d -exec mkdir -p $TEMPDIR/\\{{\\}} \\;
+        find $GCDA -name '*.gcda' -exec sh -c 'cat < $0 > '$TEMPDIR'/$0' {{}} \\;
+        # find $GCDA -name '*.gcno' -exec sh -c 'cp -d $0 '$TEMPDIR'/$0' {{}} \\;
+        tar czf $DEST -C $TEMPDIR/$GCDA .
+        rm -rf $TEMPDIR
 
-echo "$DEST successfully created, copy to build system and unpack with:"
-echo "  tar xfz $DEST "
-        '''
+        echo "$DEST successfully created, copy to build system and unpack with:"
+        echo "  tar xfz $DEST "
+                '''
         script_file = Path(self.work_linux_dir) / "collect_coverage.sh"
         script_file.write_text(shell_content)
         script_file.chmod(0o755)
         cmd = f"scp -i {self.ssh_key} -P {self.vm_port} -o \"StrictHostKeyChecking no\" {script_file.absolute()} root@localhost:/root/collect_coverage.sh"
+        if self.run_command(cmd).returncode != 0:
+            return False
+
+    def copy_ltp_bin_to_vm(self):
+        cmd = f"rm -rf {self.vm_bin}"
+        if self.execute_cmd_in_qemu(cmd).returncode != 0:
+            return False
+        cmd = f"scp -i {self.ssh_key} -P {self.vm_port} -o \"StrictHostKeyChecking no\" -r {self.ltp_bin} root@localhost:/root/ltp_bin"
         if self.run_command(cmd).returncode != 0:
             return False
         return True
@@ -134,6 +136,8 @@ echo "  tar xfz $DEST "
         self.result_dir = f"{self.home_dir}/repro_results/{git_sha}"
         if not Path(self.result_dir).exists():
             Path(self.result_dir).mkdir()
+        cmd = f"ssh-keygen -R [localhost]:{self.vm_port}"
+        self.run_command(cmd)
         if Path(self.kernel_image_path).exists():
             if not renew:
                 return True
@@ -174,8 +178,8 @@ echo "  tar xfz $DEST "
         image_path = f"{work_linux_dir}/arch/x86/boot/bzImage"
         if not Path(image_path).exists():
             return False
-        cmd = f"ssh-keygen -R [localhost]:{self.vm_port}"
-        self.run_command(cmd)
+        cmd = "rm -rf .git"
+        self.run_command(cmd, work_linux_dir)
         return True
 
     def start_qemu(self):
@@ -223,7 +227,7 @@ echo "  tar xfz $DEST "
                 return
         # collect time cost
         start_time = datetime.now()
-        cmd = f'cd /root/ltp_bin && KCONFIG_PATH=/root/config.gz timeout {timeout}s ./runltp -s {testcase_name}'
+        cmd = f'cd /root/ltp_bin && LTP_TIMEOUT_MUL=5 KCONFIG_PATH=/root/config.gz timeout {timeout}s ./runltp -s {testcase_name}'
         res = self.execute_cmd_in_qemu(cmd)
         cost_time = datetime.now() - start_time
         logger.info(f"test case {testcase_name} cost time: {cost_time}")
@@ -248,7 +252,8 @@ echo "  tar xfz $DEST "
             if res.returncode != 0:
                 logger.error("failed to collect coverage")
                 return
-            cmd = (f'scp -i {self.ssh_key} -P {self.vm_port} -o "StrictHostKeyChecking no" root@localhost:/root/{testcase_name}_coverage.tar.gz {self.work_linux_dir}/{testcase_name}_coverage.tar.gz')
+            cmd = (
+                f'scp -i {self.ssh_key} -P {self.vm_port} -o "StrictHostKeyChecking no" root@localhost:/root/{testcase_name}_coverage.tar.gz {self.work_linux_dir}/{testcase_name}_coverage.tar.gz')
             res = self.run_command(cmd)
             if res.returncode != 0:
                 logger.error("failed to copy coverage")
@@ -263,7 +268,6 @@ echo "  tar xfz $DEST "
             cmd = f"kill -9 {pid}"
             self.run_command(cmd)
             pid_file.unlink()
-
 
     def parse_result(self):
         pass

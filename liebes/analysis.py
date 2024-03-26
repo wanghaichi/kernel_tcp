@@ -4,9 +4,10 @@ from typing import List
 
 from tqdm import tqdm
 from pqdm.threads import pqdm
-from liebes.CiObjects import Checkout, Test, TestCaseType
+from liebes.CiObjects import Checkout, Test, TestCaseType, DBCheckout
 from collections import defaultdict
 from liebes.ci_logger import logger
+from liebes.sql_helper import SQLHelper
 
 
 class CIAnalysis:
@@ -450,6 +451,21 @@ class CIAnalysis:
         if job_task == "CHOOSE_ONE_BUILD":
             self.choose_one_build()
 
+    def get_default_data(self):
+        sql = SQLHelper()
+        checkouts = sql.session.query(DBCheckout).order_by(DBCheckout.git_commit_datetime.desc()).all()
+
+        self.set_parallel_number(40)
+        for ch in checkouts:
+            self.ci_objs.append(Checkout(ch))
+        self.reorder()
+        self.filter_job("COMBINE_SAME_CASE")
+        self.filter_job("FILTER_SMALL_BRANCH", minimal_testcases=20)
+        self.filter_job("COMBINE_SAME_CONFIG")
+        self.filter_job("CHOOSE_ONE_BUILD")
+        self.filter_job("FILTER_SMALL_BRANCH", minimal_testcases=20)
+        self.filter_job("FILTER_FAIL_CASES_IN_LAST_VERSION")
+        logger.info("get default data done")
 
 def load_cia(file_path) -> 'CIAnalysis':
     return pickle.load(Path(file_path).open("rb"))
