@@ -43,11 +43,11 @@ class DBCheckout(Base):
     #                                   "DBCheckout.id == DBBuild.checkout_id, "
     #                                   "or_(DBBuild.build_name =='clang-16-lkftconfig', DBBuild.build_name =='gcc-12-lkftconfig-no-kselftest-frag', DBBuild.build_name =='gcc-13-lkftconfig-compat', DBBuild.build_name =='clang-17-lkftconfig', DBBuild.build_name =='gcc-13-lkftconfig', DBBuild.build_name =='clang-16-lkftconfig-no-kselftest-frag', DBBuild.build_name =='clang-nightly-lkftconfig', DBBuild.build_name =='clang-17-lkftconfig-compat', DBBuild.build_name =='clang-17-lkftconfig-no-kselftest-frag', DBBuild.build_name =='gcc-13-lkftconfig-no-kselftest-frag', DBBuild.build_name =='gcc-12-lkftconfig-compat', DBBuild.build_name =='gcc-12-lkftconfig', DBBuild.build_name =='clang-16-lkftconfig-compat'), "
     #                                   "DBBuild.arch == 'x86_64', DBBuild.build_name != '')")
-    
+
     builds = relationship('DBBuild', back_populates='checkout',
-                        primaryjoin="and_("
-                                    "DBCheckout.id == DBBuild.checkout_id, "
-                                    "DBBuild.arch == 'x86_64', DBBuild.build_name != '')")
+                          primaryjoin="and_("
+                                      "DBCheckout.id == DBBuild.checkout_id, "
+                                      "DBBuild.arch == 'x86_64', DBBuild.build_name != '')")
 
     def __str__(self):
         return (
@@ -103,11 +103,12 @@ class DBTestRun(Base):
     # Define relationships
     # checkout = relationship('Checkout', back_populates='testruns')
     build = relationship('DBBuild', back_populates='testruns', lazy='joined')
+
     tests = relationship('DBTest',
                          back_populates='testrun',
                          lazy='joined',
-                         primaryjoin="and_(DBTestRun.id == DBTest.testrun_id, DBTest.file_path != None)")
-    
+                         primaryjoin="and_(DBTestRun.id == DBTest.testrun_id, DBTest.file_path != None, DBTest.file_path != '')")
+
     # tests = relationship('DBTest',
     #                     back_populates='testrun',
     #                     lazy='joined',
@@ -120,6 +121,40 @@ class DBTestRun(Base):
             f"job_url={self.job_url}, created_at={self.created_at}, "
             f"download_url={self.download_url}, build_name={self.build_name})"
         )
+
+
+# class TestTable(object):
+#     _mapper = {}
+#
+#     @staticmethod
+#     def model(index):
+#         table_name = f"test_{index}"
+#         class_name = f"DBTest_{index}"
+#         model_class = TestTable._mapper.get(class_name, None)
+#         if model_class is None:
+#             Base = declarative_base()
+#             model_class = type(class_name,
+#                                (Base,),
+#                                dict(__tablename__=table_name,
+#                                     __module__=__name__,
+#                                     __name__=class_name,
+#                                     id=Column(String(100), primary_key=True),
+#                                     testrun_id=Column(String(200), ForeignKey('testrun.id')),
+#                                     status=Column(String(100)),
+#                                     result=Column(String(100)),
+#                                     path=Column(String(200)),
+#                                     log_url=Column(Text),
+#                                     has_known_issues=Column(Boolean),
+#                                     known_issues=Column(Text),
+#                                     environment=Column(Text),
+#                                     suite=Column(Text),
+#                                     file_path=Column(Text),
+#                                     TP=Column(Integer),
+#                                     ))
+#             TestTable._mapper[class_name] = model_class
+#         # cls = ModelClass()
+#         # return cls
+#         return model_class
 
 
 class DBTest(Base):
@@ -141,15 +176,15 @@ class DBTest(Base):
     # Define relationships
     testrun = relationship('DBTestRun', back_populates='tests', lazy='joined')
 
-    def __str__(self):
-        return (
-            f"Test(id={self.id}, testrun_id={self.testrun_id}, status={self.status}, "
-            f"result={self.result}, path={self.path}, build_id={self.build_id}, "
-            f"build_name={self.build_name}, log_url={self.log_url}, "
-            f"has_known_issues={self.has_known_issues}, known_issues={self.known_issues}, "
-            f"environment={self.environment}, suite={self.suite}, file_path={self.file_path}, "
-            f"TP={self.TP})"
-        )
+    # def __str__(self):
+    #     return (
+    #         f"Test(id={self.id}, testrun_id={self.testrun_id}, status={self.status}, "
+    #         f"result={self.result}, path={self.path}, "
+    #         f"log_url={self.log_url}, "
+    #         f"has_known_issues={self.has_known_issues}, known_issues={self.known_issues}, "
+    #         f"environment={self.environment}, suite={self.suite}, file_path={self.file_path}, "
+    #         f"TP={self.TP})"
+    #     )
 
 
 class TestCaseType(Enum):
@@ -245,6 +280,11 @@ class Build:
 class TestRun:
     def __init__(self, db_instance: 'DBTestRun'):
         self.instance = db_instance
+        # checkout_id = self.instance.build.checkout.id
+        # table_idx = int(checkout_id) % 10
+        # model = TestTable.model(table_idx)
+        # sql = SQLHelper()
+        # tests = sql.session.query(model).filter(model.testrun_id == self.instance.id).all()
         self.tests = [Test(x) for x in self.instance.tests]
 
     def get_all_testcases(self) -> List['Test']:
@@ -255,7 +295,7 @@ class TestRun:
 
 
 class Test:
-    def __init__(self, db_instance: 'DBTest'):
+    def __init__(self, db_instance):
         self.instance = db_instance
         self._type = None
         self.file_path = self.instance.file_path
