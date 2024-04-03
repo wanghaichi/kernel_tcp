@@ -32,6 +32,7 @@ class AstTokenizer(BaseTokenizer):
             return self.get_tokens_c(contents)
         if t == TestCaseType.SH:
             return self.get_tokens_sh(contents)
+        return []
 
     def get_tokens_c(self, contents) -> List[str]:
         index = Index.create()

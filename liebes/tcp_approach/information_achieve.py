@@ -106,10 +106,10 @@ class HistoryInformationManager(InformationManager):
         res = json.load(open(save_path, "r"))
         self.last_failure_time = res["last_failure_time"]
         for k, v in self.last_failure_time.items():
-            self.last_failure_time[k] = datetime.fromisoformat(str(v))
+            self.last_failure_time[k] = [datetime.fromisoformat(str(x)) if x is not None else None for x in v]
         self.last_executed_time = res["last_executed_time"]
         for k, v in self.last_executed_time.items():
-            self.last_executed_time[k] = datetime.fromisoformat(str(v))
+            self.last_executed_time[k] = [datetime.fromisoformat(str(x)) if x is not None else None for x in v]
         self.failed_count = res["failed_count"]
         self.executed_count = res["executed_count"]
         self.exd_value = res["exd_value"]

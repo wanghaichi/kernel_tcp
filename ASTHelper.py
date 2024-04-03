@@ -9,6 +9,9 @@ from pathlib import Path
 
 if __name__ == "__main__":
     # can be found using ldconfig -p | grep clang
+    # ubuntu 20.04:
+    # add deb [arch=amd64] http://mirrors.tuna.tsinghua.edu.cn/llvm-apt/focal/ llvm-toolchain-focal-16 main
+    # sudo apt update && sudo apt install -y llvm-16 clang-16
     Config.set_library_file("libclang-16.so.16.0.6")
 
     file_path = r"/home/wanghaichi/kernelTCP/test_cases/selftests/arm64/signal/test_signals.c"
