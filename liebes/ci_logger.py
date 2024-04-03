@@ -5,13 +5,13 @@ from datetime import datetime
 from config import settings
 
 curr_time = datetime.now().strftime('%Y-%m-%d-%H:%M:%S')
-file_name = os.path.join(settings.LOG.PATH, f'main-{curr_time}.txt')
+logger_file_name = os.path.join(settings.LOG.PATH, f'main-{curr_time}.txt')
 # define file logger format
 logging.basicConfig(
     format=settings.LOG.FORMAT,
     datefmt=settings.LOG.DATE_FORMAT,
     level=settings.LOG.LEVEL,
-    filename=file_name,
+    filename=logger_file_name,
     filemode='a'
 )
 
@@ -24,7 +24,7 @@ def get_logger():
     # Create an instance
     logger = logging.getLogger('main')
     logger.addHandler(console)
-    logger.info(f"start to record log in {file_name}")
+    logger.info(f"start to record log in {logger_file_name}")
     return logger
 
 

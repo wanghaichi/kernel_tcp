@@ -4,10 +4,12 @@ Input: testcase, relevant information
 Output: extracted information for each test case
 """
 import copy
+import json
 
 from liebes.analysis import CIAnalysis
 from liebes.tokenizer import AstTokenizer
 from liebes.ci_logger import logger
+from datetime import datetime, date
 
 
 class InformationManager:
@@ -82,6 +84,39 @@ class HistoryInformationManager(InformationManager):
                 self.rocket_value[k].append(rocket_v)
         pass
 
+    def save(self, save_path="history_information.json"):
+        def json_serial(obj):
+            """JSON serializer for objects not serializable by default json code"""
+            if isinstance(obj, (datetime, date)):
+                return obj.isoformat()
+            raise TypeError("Type %s not serializable" % type(obj))
+
+        res = {
+            "last_failure_time": self.last_failure_time,
+            "last_executed_time": self.last_executed_time,
+            "failed_count": self.failed_count,
+            "executed_count": self.executed_count,
+            "exd_value": self.exd_value,
+            "rocket_value": self.rocket_value
+        }
+        json.dump(res, open(save_path, "w"), indent=4, default=json_serial)
+        logger.info(f"success save history res to {save_path}")
+
+    def load(self, save_path="history_information.json"):
+        res = json.load(open(save_path, "r"))
+        self.last_failure_time = res["last_failure_time"]
+        for k, v in self.last_failure_time.items():
+            self.last_failure_time[k] = datetime.fromisoformat(str(v))
+        self.last_executed_time = res["last_executed_time"]
+        for k, v in self.last_executed_time.items():
+            self.last_executed_time[k] = datetime.fromisoformat(str(v))
+        self.failed_count = res["failed_count"]
+        self.executed_count = res["executed_count"]
+        self.exd_value = res["exd_value"]
+        self.rocket_value = res["rocket_value"]
+        logger.info(f"success load history res to {save_path}")
+        pass
+
 
 class TestCaseInformationManager(InformationManager):
     def __init__(self, cia: "CIAnalysis", git_helper):
@@ -103,7 +138,8 @@ class TestCaseInformationManager(InformationManager):
         for ci_obj in self.cia.ci_objs:
             commit = self.git_helper.get_commit_info_by_time(ci_obj.instance.git_commit_datetime)
             if commit is None:
-                logger.error(f"commit is not found for {self.git_helper.repo.path} with time: {ci_obj.instance.git_commit_datetime}")
+                logger.error(
+                    f"commit is not found for {self.git_helper.repo.path} with time: {ci_obj.instance.git_commit_datetime}")
                 continue
             changed_files = []
             if last_commit is not None:

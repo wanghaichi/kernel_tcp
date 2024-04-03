@@ -202,7 +202,7 @@ sudo chroot $DIR /bin/bash -c "echo deb https://mirrors.tuna.tsinghua.edu.cn/ubu
 
 # sudo chroot $DIR /bin/bash -c "add-apt-repository ppa:ubuntu-toolchain-r/test"
 
-sudo chroot $DIR /bin/bash -c "apt-get update; apt-get install -y bzip2 net-tools quota lcov unzip libnuma-dev libaio-dev libacl1-dev nfs-kernel-server"
+sudo chroot $DIR /bin/bash -c "apt-get update; apt-get install -y bzip2 net-tools quota lcov unzip libnuma-dev libaio-dev libacl1-dev nfs-kernel-server file"
 # sudo chroot $DIR /bin/bash -c "ln -sf /usr/bin/gcc-11 /usr/bin/gcc"
 
 

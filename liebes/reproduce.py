@@ -23,6 +23,7 @@ class ReproUtil:
         self.result_dir = None
         self.ltp_dir = self.home_dir + "/" + ltp_dir
         self.ltp_bin = None
+        self.ltp_version = None
         self.vm_mem = vm_mem
         self.vm_bin = "/root/ltp_bin"
         self.qemu_process = None
@@ -49,7 +50,7 @@ class ReproUtil:
         #     return False
 
         # step1. checkout ltp to the specific git sha
-
+        self.ltp_version = git_sha
         work_ltp_dir = Path(f"{self.home_dir}/repro_ltps/{git_sha}")
         if work_ltp_dir.exists() and (work_ltp_dir / "build").exists():
             self.ltp_bin = work_ltp_dir / "build"
@@ -120,6 +121,14 @@ class ReproUtil:
             return False
 
     def copy_ltp_bin_to_vm(self):
+        # check if the ltp binary is already there
+        cmd = "cat /root/ltp_bin/Version"
+        res = self.execute_cmd_in_qemu(cmd)
+        if res.returncode == 0 and res.stdout.strip() == self.ltp_version:
+            logger.info(f"{res.stdout.strip()}")
+            logger.info(f"ltp binary is already in the vm, tag version: {self.ltp_version}")
+            return True
+
         cmd = f"rm -rf {self.vm_bin}"
         if self.execute_cmd_in_qemu(cmd).returncode != 0:
             return False
