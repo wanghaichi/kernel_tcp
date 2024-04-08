@@ -25,7 +25,9 @@ class ReproUtil:
         self.ltp_bin = None
         self.ltp_version = None
         self.vm_mem = vm_mem
-        self.vm_bin = "/root/ltp_bin"
+        self.vm_ltp_bin = "/root/ltp_bin"
+        self.vm_selftest_bin = "/root/selftest_bin"
+        self.selftest_bin = None
         self.qemu_process = None
         pass
 
@@ -38,6 +40,36 @@ class ReproUtil:
             logger.error(f"execute command failed: {cmd}")
             logger.error(f"error message: {result.stderr}")
         return result
+
+    def prepare_selftest_binary(self):
+        '''
+        some necessary packages are required to build selftest
+        sudo apt install libpopt-dev
+        sudo apt install libasound2-dev
+        sudo apt install libcap-ng-dev
+        sudo apt install libfuse-dev
+        '''
+
+        if self.work_linux_dir is None:
+            logger.error("linux image is not prepared")
+            return False
+        if (self.work_linux_dir / "selftest_build").exists():
+            self.selftest_bin = self.work_linux_dir / "selftest_build"
+            logger.info(f"selftest bin is located at {self.selftest_bin.absolute()}")
+            return True
+
+        cmd = "mkdir selftest_build"
+        if self.run_command(cmd, cwd=self.work_linux_dir).returncode != 0:
+            return False
+        cmd = "make headers"
+        if self.run_command(cmd, cwd=self.work_linux_dir).returncode != 0:
+            return False
+        cmd = f"make -C tools/testing/selftests install INSTALL_PATH={(self.work_linux_dir / 'selftest_build').absolute()}"
+        if self.run_command(cmd, cwd=self.work_linux_dir).returncode != 0:
+            return False
+        self.selftest_bin = self.work_linux_dir / "selftest_build"
+        logger.info(f"selftest bin is located at {self.selftest_bin.absolute()}")
+        return True
 
     def prepare_ltp_binary(self, git_sha):
         # make sure all dependencies are installed
@@ -91,11 +123,26 @@ class ReproUtil:
         cmd = f"scp -i {self.ssh_key} -P {self.vm_port} -o \"StrictHostKeyChecking no\" -r {self.work_linux_dir}/modules.builtin \"root@localhost:/lib/modules/\$(uname -r)/\""
         if self.run_command(cmd).returncode != 0:
             return False
-            # copy coverage collecting script to vm
+
+        # need to determine the gcov path first. :(
+        gcov_path = f"/sys/kernel/debug/gcov{self.work_linux_dir}"
+        cmd = f"ls {gcov_path}"
+        res = self.execute_cmd_in_qemu(cmd)
+        if res.returncode != 0:
+            if "/data" in gcov_path:
+                gcov_path = gcov_path.replace("/data", "/home")
+            elif "/home" in gcov_path:
+                gcov_path = gcov_path.replace("/home", "/data")
+            cmd = f"ls {gcov_path}"
+            res = self.execute_cmd_in_qemu(cmd)
+            if res.returncode != 0:
+                logger.error(f"failed to determine gcov path: {self.work_linux_dir}")
+
+        # copy coverage collecting script to vm
         shell_content = f'''#!/bin/bash -e
 
         DEST=$1
-        GCDA=/sys/kernel/debug/gcov{self.work_linux_dir}
+        GCDA={gcov_path}
 
         if [ -z "$DEST" ] ; then
             echo "Usage: $0 <output.tar.gz>" >&2
@@ -129,10 +176,19 @@ class ReproUtil:
             logger.info(f"ltp binary is already in the vm, tag version: {self.ltp_version}")
             return True
 
-        cmd = f"rm -rf {self.vm_bin}"
+        cmd = f"rm -rf {self.vm_ltp_bin}"
         if self.execute_cmd_in_qemu(cmd).returncode != 0:
             return False
         cmd = f"scp -i {self.ssh_key} -P {self.vm_port} -o \"StrictHostKeyChecking no\" -r {self.ltp_bin} root@localhost:/root/ltp_bin"
+        if self.run_command(cmd).returncode != 0:
+            return False
+        return True
+
+    def copy_selftest_bin_to_vm(self):
+        cmd = f"rm -rf {self.vm_selftest_bin}"
+        if self.execute_cmd_in_qemu(cmd).returncode != 0:
+            return False
+        cmd = f"scp -i {self.ssh_key} -P {self.vm_port} -o \"StrictHostKeyChecking no\" -r {self.selftest_bin} root@localhost:/root/selftest_bin"
         if self.run_command(cmd).returncode != 0:
             return False
         return True
@@ -227,7 +283,7 @@ class ReproUtil:
     def collect_coverage(self):
         pass
 
-    def execute_ltp_testcase(self, testcase_name, timeout=30, save_result=True, collect_coverage=False):
+    def execute_testcase(self, testcase_name, testcase_type, timeout=30, save_result=True, collect_coverage=False):
         if collect_coverage:
             cmd = f'lcov -z'
             res = self.execute_cmd_in_qemu(cmd)
@@ -236,7 +292,13 @@ class ReproUtil:
                 return
         # collect time cost
         start_time = datetime.now()
-        cmd = f'cd /root/ltp_bin && LTP_TIMEOUT_MUL=5 KCONFIG_PATH=/root/config.gz timeout {timeout}s ./runltp -s {testcase_name}'
+        if testcase_type == "ltp":
+            cmd = f'cd /root/ltp_bin && LTP_TIMEOUT_MUL=5 KCONFIG_PATH=/root/config.gz timeout {timeout}s ./runltp -s {testcase_name}'
+        elif testcase_type == "selftest":
+            cmd = f'cd /root/selftest_bin && timeout {timeout}s ./run_kselftest.sh -t {testcase_name}'
+        else:
+            logger.error(f"testcase type {testcase_type} not supported, use [ltp | selftest] instead")
+            return
         res = self.execute_cmd_in_qemu(cmd)
         cost_time = datetime.now() - start_time
         logger.info(f"test case {testcase_name} cost time: {cost_time}")
@@ -256,6 +318,9 @@ class ReproUtil:
                 result_file.write_text(res.stdout + f"\nTime cost: {cost_time}s\n")
                 logger.info(f"save succ result to {result_file}")
         if collect_coverage:
+            if Path(f"{self.work_linux_dir}/{testcase_name}_coverage.tar.gz").exists():
+                logger.info(f"coverage file {testcase_name}_coverage.tar.gz already exists")
+                return
             cmd = f'cd /root && ./collect_coverage.sh /root/{testcase_name}_coverage.tar.gz'
             res = self.execute_cmd_in_qemu(cmd)
             if res.returncode != 0:
