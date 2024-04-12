@@ -326,8 +326,28 @@ class Test:
         if self.file_path.startswith("test_cases/ltp"):
             return "ltp"
         elif self.file_path.startswith("test_cases/selftests"):
-            return "selftests"
+            return "selftest"
         return "unknown"
+
+    def get_testcase_name(self):
+        if self.get_suite_name() == "selftest":
+            parent_dir_name = Path(self.file_path).parent.name
+            tc_name = parent_dir_name + ":" + Path(self.file_path).stem
+            if parent_dir_name == "x86":
+                tc_name = tc_name + "_64"
+            if Path(self.file_path).suffix == ".sh":
+                tc_name = tc_name + ".sh"
+            elif Path(self.file_path).suffix == ".py":
+                tc_name = tc_name + ".py"
+            if "functional:futex" in tc_name:
+                tc_name = "futex:run.sh"
+            # temporary solution
+            if tc_name == "exec:load_address":
+                tc_name = "exec:load_address_16777216"
+
+        else:
+            tc_name = Path(self.file_path).stem
+        return tc_name
 
     @property
     def type(self):
@@ -354,13 +374,26 @@ class Test:
         return self.status in [1, 2]
 
     def merge_status(self, other_testcase: 'Test'):
-        if self.is_pass() or other_testcase.is_pass():
-            self.status = 0
-            pass
-        elif self.is_failed() or other_testcase.is_failed():
-            self.status = 1
-        else:
-            self.status = 3
+        # failed > pass > unknown
+        to_update = False
+        if other_testcase.is_failed() and (not self.is_failed()):
+            to_update = True
+        elif other_testcase.is_pass() and self.is_unknown():
+            to_update = True
+        if to_update:
+            self.instance = other_testcase.instance
+            self._type = None
+            self.file_path = self.instance.file_path
+            self.id = self.instance.id
+            self.status = other_testcase.status
+
+        # if self.is_pass() or other_testcase.is_pass():
+        #     self.status = 0
+        #     pass
+        # elif self.is_failed() or other_testcase.is_failed():
+        #     self.status = 1
+        # else:
+        #     self.status = 3
         # elif self.is_unknown():
         #     self.status = other_testcase.status
 
