@@ -13,7 +13,7 @@ def is_process_running(pid):
 
 
 if __name__ == "__main__":
-    total_vm = 12
+    total_vm = 10
 
     pid_root = Path("pids")
     not_start_tasks = []

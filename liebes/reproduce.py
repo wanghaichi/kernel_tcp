@@ -245,6 +245,13 @@ class ReproUtil:
             return False
         cmd = "rm -rf .git"
         self.run_command(cmd, work_linux_dir)
+
+        # TODO  INSTALL_MOD_PATH=/home/wanghaichi/linux-stable-rc-test/modules_install make modules_install
+        # add module install command !!!
+        # note this command will add a symbolic link to whole kernel dir, do not use scp directly
+        # remove the symbolic link first which will be located at /lib/modules/$(uname -r)/build
+        # make modules
+        # make modules_install
         return True
 
     def start_qemu(self):

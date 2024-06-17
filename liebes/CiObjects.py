@@ -295,7 +295,15 @@ class TestRun:
 
 
 class Test:
-    def __init__(self, db_instance):
+
+    def __init__(self, db_instance=None):
+        if db_instance is None:
+            self.instance = None
+            self._type = None
+            self.file_path = None
+            self.id = None
+            self.status = None
+            return
         self.instance = db_instance
         self._type = None
         self.file_path = self.instance.file_path
@@ -374,26 +382,26 @@ class Test:
         return self.status in [1, 2]
 
     def merge_status(self, other_testcase: 'Test'):
-        # failed > pass > unknown
-        to_update = False
-        if other_testcase.is_failed() and (not self.is_failed()):
-            to_update = True
-        elif other_testcase.is_pass() and self.is_unknown():
-            to_update = True
-        if to_update:
-            self.instance = other_testcase.instance
-            self._type = None
-            self.file_path = self.instance.file_path
-            self.id = self.instance.id
-            self.status = other_testcase.status
+        # # failed > pass > unknown
+        # to_update = False
+        # if other_testcase.is_failed() and (not self.is_failed()):
+        #     to_update = True
+        # elif other_testcase.is_pass() and self.is_unknown():
+        #     to_update = True
+        # if to_update:
+        #     self.instance = other_testcase.instance
+        #     self._type = None
+        #     self.file_path = self.instance.file_path
+        #     self.id = self.instance.id
+        #     self.status = other_testcase.status
 
-        # if self.is_pass() or other_testcase.is_pass():
-        #     self.status = 0
-        #     pass
-        # elif self.is_failed() or other_testcase.is_failed():
-        #     self.status = 1
-        # else:
-        #     self.status = 3
+        if self.is_pass() or other_testcase.is_pass():
+            self.status = 0
+            pass
+        elif self.is_failed() or other_testcase.is_failed():
+            self.status = 1
+        else:
+            self.status = 3
         # elif self.is_unknown():
         #     self.status = other_testcase.status
 
