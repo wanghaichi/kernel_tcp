@@ -66,7 +66,9 @@ class GitHelper:
         commit_obj = self.repo.commit(commit_id)
         try:
             return commit_obj.tree[file_path].data_stream.read().decode('utf-8', errors='ignore')
+            # return commit_obj.tree[file_path].data_stream.read().decode('utf-8')
         except Exception as e:
+            # print(commit_id, file_path)
             return None
 
     def get_changed_files(self, commit, to_commit):

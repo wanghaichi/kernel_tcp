@@ -4,6 +4,7 @@ from gensim import corpora, models, similarities
 import numpy as np
 from collections import Counter
 import re
+from liebes.ci_logger import logger
 
 
 class BaseModel:
@@ -41,13 +42,15 @@ class TfIdfModel(BaseModel):
     def get_similarity(self, corpus, queries):
         # temp = np.concatenate((np.array(corpus), np.array(queries)))
         # tfidf_matrix = self.vectorization(temp)
+        # logger.info(f"{self.name}: start create model")
         tfidf_matrix = self.vectorization(corpus)
+        # logger.info(f"{self.name}: start generate similarity matrix")
         query_vector = self.vectorizer.transform(queries)
-
         # 计算余弦相似度
         # cosine_similarity_matrix = cosine_similarity(tfidf_matrix)
         # similarity_matrix = cosine_similarity_matrix[: len(corpus), len(corpus):]
         similarity_matrix = np.transpose(cosine_similarity(query_vector, tfidf_matrix))
+        # logger.info(f"{self.name}: end generate similarity matrix")
         return similarity_matrix
 
 
@@ -102,13 +105,14 @@ class Bm25Model(BaseModel):
         return score_list
 
     def get_similarity(self, corpus, queries):
-
+        logger.info(f"{self.name}: start create model")
         self.init(corpus)
         tokenized_query = [re.findall(r'\b\w+\b', doc) for doc in queries]
+        logger.info(f"{self.name}: start generate similarity matrix")
         similarity_matrix = []
         for q in tokenized_query:
             similarity_matrix.append(self.get_doc_score(q))
-
+        logger.info(f"{self.name}: end generate similarity matrix")
         return np.transpose(np.array(similarity_matrix))
 
 
@@ -118,14 +122,14 @@ class LSIModel(BaseModel):
         self.num_topics = num_topics
 
     def get_similarity(self, corpus, queries):
+        logger.info(f"{self.name}: start create model")
         tokenized_corpus = [doc.split(' ') for doc in np.concatenate((np.array(corpus), np.array(queries)))]
         dictionary = corpora.Dictionary(tokenized_corpus)
-
         doc_term_matrix = [dictionary.doc2bow(tokens) for tokens in tokenized_corpus]
-
         lsi_model = models.LsiModel(doc_term_matrix, id2word=dictionary, num_topics=self.num_topics)
+        logger.info(f"{self.name}: start generate similarity matrix")
         similarity_matrix = np.array(similarities.MatrixSimilarity(lsi_model[doc_term_matrix]))
-
+        logger.info(f"{self.name}: end generate similarity matrix")
         return similarity_matrix[0: len(corpus), len(corpus):]
 
 
@@ -135,14 +139,18 @@ class LDAModel(BaseModel):
         self.num_topics = num_topics
 
     def get_similarity(self, corpus, queries):
+        logger.info(f"{self.name}: start create model")
+
         tokenized_corpus = [doc.split(' ') for doc in np.concatenate((np.array(corpus), np.array(queries)))]
         dictionary = corpora.Dictionary(tokenized_corpus)
 
         doc_term_matrix = [dictionary.doc2bow(tokens) for tokens in tokenized_corpus]
 
         lsi_model = models.LdaModel(doc_term_matrix, id2word=dictionary, num_topics=self.num_topics)
-        similarity_matrix = np.array(similarities.MatrixSimilarity(lsi_model[doc_term_matrix]))
+        logger.info(f"{self.name}: start generate similarity matrix")
 
+        similarity_matrix = np.array(similarities.MatrixSimilarity(lsi_model[doc_term_matrix]))
+        logger.info(f"{self.name}: end generate similarity matrix")
         return similarity_matrix[0: len(corpus), len(corpus):]
 
 

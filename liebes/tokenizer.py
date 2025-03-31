@@ -8,6 +8,8 @@ from clang.cindex import TokenKind  # 节点的语义类别
 from liebes.CiObjects import TestCaseType
 from liebes.ci_logger import logger
 
+Config.set_library_file("libclang-16.so.16.0.6")
+
 
 class BaseTokenizer:
     def __init__(self):
@@ -21,7 +23,6 @@ class BaseTokenizer:
 class AstTokenizer(BaseTokenizer):
     def __init__(self):
         # can be found using ldconfig -p | grep clang
-        Config.set_library_file("libclang-16.so.16.0.6")
         super().__init__()
         self.name = "AstTokenizer"
 

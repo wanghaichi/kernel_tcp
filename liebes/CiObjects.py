@@ -369,6 +369,8 @@ class Test:
                     self._type = TestCaseType.PY
                 if self._type is None:
                     self._type = TestCaseType.UNKNOWN
+            else:
+                self._type = TestCaseType.UNKNOWN
         return self._type
 
     def is_pass(self):
