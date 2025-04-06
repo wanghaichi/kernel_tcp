@@ -6,9 +6,9 @@ Main scripts for studied TCP approaches are as follows:
 
 - similarity-based : similarity_main.py
 
-- coverage-based : coverage_main.py
+- coverage-based : coverage_main.py (the coverage data is collected by gcov, related logic is located in collect_coverage.py)
 
-- ML-based : ml_main.py
+- ML-based : ml_tcp.py
 
 
 ## Dataset
