@@ -17,8 +17,12 @@ All collected dataset are stored in a sql file. We use mysql as the SQL backend.
 The structure of dataset can be found at database_structure.sql.
 The full dataset can be downloaded at [dataset.sql](https://www.alipan.com/s/FFxRPVDgSkw)
 
+The dataset contains the regression results collected from LKFT (Linux Kernel Functional Testing) project. 
+The dataset involves various kernel versions across different architectures. 
+
 We provide a script to access the dataset. See liebes/CiObjects.py for more details. 
 The usage of the script can be found at every beginning of the main script.
+See [Database Structure](https://github.com/wanghaichi/kernel_tcp?tab=readme-ov-file#database-structure) for details.
 
 The dataset is managed as a tree-like structure:
 
