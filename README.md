@@ -19,10 +19,10 @@ The full dataset can be downloaded at [dataset.sql](https://www.alipan.com/s/FFx
 
 The dataset contains the regression results collected from LKFT (Linux Kernel Functional Testing) project. 
 The dataset involves various kernel versions across different architectures. 
+See [Database Structure](https://github.com/wanghaichi/kernel_tcp?tab=readme-ov-file#database-structure) for details.
 
 We provide a script to access the dataset. See liebes/CiObjects.py for more details. 
 The usage of the script can be found at every beginning of the main script.
-See [Database Structure](https://github.com/wanghaichi/kernel_tcp?tab=readme-ov-file#database-structure) for details.
 
 The dataset is managed as a tree-like structure:
 
